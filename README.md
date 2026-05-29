@@ -1,10 +1,26 @@
-# StockTray
+# StockTray - Windows 托盘股票行情工具
+
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
+![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg)
 
 一个安静待在 Windows 托盘里的股票行情小工具。
 
 它不想变成又一个铺满屏幕的行情终端。StockTray 的目标很简单：平时藏在系统托盘里，需要时点一下，弹出一个干净、轻量、带一点 Windows 11 味道的行情浮窗。
 
 当前版本已经从旧 WPF 方案迁移到 Tauri：Rust 负责托盘、行情、配置和盈亏计算，React 负责设置页和弹窗 UI。
+
+StockTray is a lightweight Windows system tray stock quote app for people who want a quiet A-share watchlist, portfolio profit/loss glance, and quick market popup without keeping a full trading terminal open.
+
+## 适合谁
+
+- 想在 Windows 系统托盘里常驻查看股票行情、自选股和持仓盈亏的人。
+- 想找一个轻量级 A 股行情小工具，而不是完整证券交易终端的人。
+- 想参考 Tauri 2 + Rust + React 实现系统托盘、透明弹窗、配置迁移和 Windows 桌面打包的开发者。
+
+## 关键词
+
+Windows 托盘股票行情、系统托盘自选股、A 股行情工具、股票盯盘小工具、持仓盈亏提醒、Windows 11 桌面行情浮窗、Tauri 股票应用、Rust React desktop app、stock tray app、stock quote widget、portfolio PnL tracker。
 
 ## 现在它能做什么
 
@@ -118,6 +134,7 @@ releases/StockTray_<version>_x64-setup.exe
 
 - [架构说明](docs/ARCHITECTURE.md)
 - [开发与发布流程](docs/DEVELOPMENT.md)
+- [GitHub 搜索优化建议](docs/GITHUB_DISCOVERY.md)
 - [版本记录](RELEASES.md)
 
 ## 后续想做
