@@ -1,0 +1,29 @@
+bin/
+obj/
+publish/
+.vs/
+.idea/
+*.user
+*.suo
+*.log
+node_modules/
+dist/
+src-tauri/target/
+releases/
+
+# Local/editor state
+.vscode/
+*.tmp
+*.bak
+
+# Environment and secrets
+.env
+.env.*
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+
+# Tauri generated schemas are reproducible
+src-tauri/gen/
+.github-upload/

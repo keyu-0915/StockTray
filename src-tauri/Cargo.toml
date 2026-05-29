@@ -1,0 +1,24 @@
+[package]
+name = "stocktray"
+version = "0.2.8"
+description = "A Windows tray stock quote app"
+authors = ["StockTray"]
+edition = "2021"
+
+[lib]
+name = "stocktray_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+encoding_rs = "0.8"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tokio = { version = "1", features = ["sync", "time"] }
