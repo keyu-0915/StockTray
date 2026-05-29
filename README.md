@@ -89,7 +89,7 @@ npm run release
 releases/StockTray_<version>_x64-setup.exe
 ```
 
-当前最新版本：`0.2.8`
+当前最新版本：`0.2.9`
 
 ## 项目结构
 
@@ -134,4 +134,8 @@ StockTray 只是个人行情查看工具，不构成任何投资建议。
 
 ## 许可证
 
-当前仓库暂未指定开源许可证。公开发布前建议补充 `LICENSE` 文件。
+本项目采用 [GNU General Public License v3.0 or later](LICENSE)。
+
+你可以自由使用、复制、分发和修改 StockTray；如果分发修改版或衍生版本，需要继续遵守 GPL 并保留相同的自由软件授权。
+
+注意：GPL 允许商业使用和商业分发，但要求分发者同时遵守 GPL 的源码开放与再分发条款。

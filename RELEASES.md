@@ -4,6 +4,12 @@
 
 - Next changes will be listed here.
 
+## 0.2.9 - GPL license and release notes
+
+- Added the GNU General Public License v3.0 or later so StockTray has a clear copyleft free software license.
+- Updated README, npm metadata, Cargo metadata, and Tauri package metadata to consistently advertise the GPL license.
+- Added a dedicated v0.2.9 release note for GitHub Releases and rebuilt the Windows installer as `StockTray_0.2.9_x64-setup.exe`.
+
 ## 0.2.8 - Popup layout fix
 
 - Replaced popup parallel card layout with a safer flex-wrap layout to prevent quote cards from overlapping at different DPI/window sizes.
