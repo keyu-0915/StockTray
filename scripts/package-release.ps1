@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
 
-$package = Get-Content "package.json" -Raw | ConvertFrom-Json
+$package = Get-Content "package.json" -Raw -Encoding UTF8 | ConvertFrom-Json
 $version = $package.version
 
 $cargoCommand = Get-Command cargo -ErrorAction SilentlyContinue
@@ -39,6 +39,8 @@ function Invoke-Checked {
 Invoke-Checked npm run build
 Invoke-Checked $cargo fmt --manifest-path "src-tauri\Cargo.toml" --check
 Invoke-Checked $cargo check --manifest-path "src-tauri\Cargo.toml"
+Invoke-Checked $cargo test --manifest-path "src-tauri\Cargo.toml"
+Invoke-Checked $cargo clippy --manifest-path "src-tauri\Cargo.toml" "--" "-D" "warnings"
 Invoke-Checked npm run tauri:build
 
 $expectedInstaller = Join-Path $root "src-tauri\target\release\bundle\nsis\StockTray_${version}_x64-setup.exe"

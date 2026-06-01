@@ -130,7 +130,11 @@ fn backup_invalid_config(path: &Path) {
 }
 
 pub(crate) fn normalize_holding(value: f32) -> f32 {
-    ((value.max(100.0) / 100.0).round() * 100.0).max(100.0)
+    if value.is_finite() {
+        ((value.max(0.0) / 100.0).round() * 100.0).max(0.0)
+    } else {
+        0.0
+    }
 }
 
 pub(crate) fn normalize_cost_price(value: f32) -> f32 {
@@ -163,6 +167,7 @@ pub(crate) fn is_supported_field(field: &str) -> bool {
             | "change_percent"
             | "volume"
             | "amount"
+            | "volume_ratio"
             | "turnover"
             | "holdings"
             | "cost_price"

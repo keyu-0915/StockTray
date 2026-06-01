@@ -101,6 +101,7 @@ pub(crate) struct StockData {
     pub(crate) low: f32,
     pub(crate) volume: f32,
     pub(crate) amount: f32,
+    pub(crate) volume_ratio: f32,
     pub(crate) change: f32,
     pub(crate) change_percent: f32,
     pub(crate) turnover: f32,
@@ -120,6 +121,7 @@ pub(crate) struct DailyPnlItem {
     pub(crate) low: f32,
     pub(crate) volume: f32,
     pub(crate) amount: f32,
+    pub(crate) volume_ratio: f32,
     pub(crate) change: f32,
     pub(crate) change_percent: f32,
     pub(crate) turnover: f32,
@@ -146,6 +148,7 @@ pub(crate) struct DailySummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AppStatePayload {
+    pub(crate) app_version: String,
     pub(crate) config: AppConfig,
     pub(crate) summary: Option<DailySummary>,
     pub(crate) last_refreshed_at: Option<String>,

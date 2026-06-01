@@ -4,6 +4,43 @@
 
 - Next changes will be listed here.
 
+## 0.2.15 - Reliable drag ordering
+
+- Replaced native HTML drag/drop ordering with pointer-based row dragging for better Tauri WebView reliability.
+- Kept drop-target highlighting while dragging rows.
+- Added Rust unit coverage for quote code normalization and Sina quote parsing.
+- Strengthened the release packaging script to run Rust tests and strict Clippy checks before building the installer.
+
+## 0.2.14 - Drag ordering
+
+- Added drag-and-drop watchlist ordering with a dedicated row drag handle.
+- Highlighted the active drop target while dragging a stock row.
+- Kept the move up/down buttons and holdings/change-percent sort buttons as secondary ordering tools.
+
+## 0.2.13 - Watchlist ordering
+
+- Added free watchlist ordering with per-row move up and move down controls.
+- Added one-click sorting by holdings and quote change percent, with ascending/descending toggle behavior.
+- Persisted the resulting watchlist order through the existing settings save flow so popup and tray ordering follow the configured watchlist order.
+
+## 0.2.12 - Version display
+
+- Displayed the running application version in the settings window.
+- Exposed the backend package version through the app state payload so the UI stays aligned with release metadata.
+- Ignored `src-tauri/target` in Vite file watching to avoid Windows DLL lock failures during local Tauri development.
+
+## 0.2.11 - Zero holdings
+
+- Allowed stock holdings to be set to `0`.
+- Kept positive holding values rounded to 100-share lots while clamping invalid or negative values to `0`.
+
+## 0.2.10 - Volume ratio and tray click fix
+
+- Added volume ratio support from Eastmoney quote field `f10`.
+- Added the volume ratio indicator to popup and tray tooltip field configuration.
+- Fixed tray left-click popup handling by accepting both mouse down/up tray events with debouncing.
+- Hardened popup display by unminimizing and keeping the quote popup on top before showing it.
+
 ## 0.2.9 - GPL license and release notes
 
 - Added the GNU General Public License v3.0 or later so StockTray has a clear copyleft free software license.

@@ -33,6 +33,7 @@ pub(crate) fn compute_daily_pnl(quotes: &[StockData], config: &AppConfig) -> Dai
                 low: quote.low,
                 volume: quote.volume,
                 amount: quote.amount,
+                volume_ratio: quote.volume_ratio,
                 change: quote.change,
                 change_percent: quote.change_percent,
                 turnover: quote.turnover,

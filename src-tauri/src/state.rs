@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{path::PathBuf, sync::Mutex, time::Instant};
 
 use tauri::{AppHandle, Manager};
 
@@ -14,6 +14,7 @@ pub(crate) struct RuntimeState {
     pub(crate) popup_hovered: bool,
     pub(crate) popup_hide_pending: bool,
     pub(crate) tray_hovered: bool,
+    pub(crate) last_tray_click_at: Option<Instant>,
 }
 
 pub(crate) struct SharedState(pub(crate) Mutex<RuntimeState>);
@@ -30,6 +31,7 @@ impl SharedState {
             popup_hovered: false,
             popup_hide_pending: false,
             tray_hovered: false,
+            last_tray_click_at: None,
         }))
     }
 }
@@ -38,6 +40,7 @@ pub(crate) fn current_payload(app: &AppHandle) -> Option<AppStatePayload> {
     let state = app.state::<SharedState>();
     let guard = state.0.lock().ok()?;
     Some(AppStatePayload {
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
         config: guard.config.clone(),
         summary: guard.summary.clone(),
         last_refreshed_at: guard.last_refreshed_at.clone(),

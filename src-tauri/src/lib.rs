@@ -61,6 +61,7 @@ pub fn run() {
 fn get_state(state: State<SharedState>) -> Result<AppStatePayload, String> {
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     Ok(AppStatePayload {
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
         config: guard.config.clone(),
         summary: guard.summary.clone(),
         last_refreshed_at: guard.last_refreshed_at.clone(),
@@ -80,6 +81,7 @@ fn save_settings(
         save_config_to(&guard.config_path, &normalized)?;
         guard.config = normalized;
         AppStatePayload {
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
             config: guard.config.clone(),
             summary: guard.summary.clone(),
             last_refreshed_at: guard.last_refreshed_at.clone(),

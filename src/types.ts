@@ -44,6 +44,7 @@ export type DailyPnlItem = {
   low: number;
   volume: number;
   amount: number;
+  volume_ratio: number;
   change: number;
   change_percent: number;
   turnover: number;
@@ -68,6 +69,7 @@ export type DailySummary = {
 };
 
 export type AppStatePayload = {
+  app_version: string;
   config: AppConfig;
   summary: DailySummary | null;
   last_refreshed_at: string | null;

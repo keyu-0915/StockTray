@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -41,21 +43,21 @@ pub(crate) fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         })
         .on_tray_icon_event(|tray, event| match event {
             TrayIconEvent::Enter { .. } | TrayIconEvent::Move { .. } => {
-                set_tray_hovered(&tray.app_handle(), true);
+                set_tray_hovered(tray.app_handle(), true);
             }
             TrayIconEvent::Leave { .. } => {
-                set_tray_hovered(&tray.app_handle(), false);
+                set_tray_hovered(tray.app_handle(), false);
             }
             TrayIconEvent::Click {
                 button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
+                button_state: MouseButtonState::Down | MouseButtonState::Up,
                 position,
                 ..
             } => {
-                toggle_popup(
-                    &tray.app_handle(),
-                    Some((position.x as i32, position.y as i32)),
-                );
+                let app = tray.app_handle();
+                if accept_tray_click(app) {
+                    toggle_popup(app, Some((position.x as i32, position.y as i32)));
+                }
             }
             _ => {}
         })
@@ -69,6 +71,23 @@ fn set_tray_hovered(app: &AppHandle, hovered: bool) {
     if let Ok(mut guard) = result {
         guard.tray_hovered = hovered;
     }
+}
+
+fn accept_tray_click(app: &AppHandle) -> bool {
+    let state = app.state::<SharedState>();
+    let result = state.0.lock();
+    if let Ok(mut guard) = result {
+        let now = Instant::now();
+        let accept = guard
+            .last_tray_click_at
+            .map(|last| now.duration_since(last) > Duration::from_millis(350))
+            .unwrap_or(true);
+        if accept {
+            guard.last_tray_click_at = Some(now);
+        }
+        return accept;
+    }
+    false
 }
 
 pub(crate) fn update_tray_status(app: &AppHandle, summary: &DailySummary) {
@@ -158,6 +177,7 @@ fn tray_tooltip_field_label(field: &str) -> &'static str {
         "change_percent" => "涨跌幅",
         "volume" => "成交量",
         "amount" => "成交额",
+        "volume_ratio" => "量比",
         "turnover" => "换手率",
         "holdings" => "持仓",
         "cost_price" => "成本",
@@ -182,6 +202,7 @@ fn tray_tooltip_field_value(field: &str, item: &DailyPnlItem) -> String {
         "change_percent" => format_signed(item.change_percent, 2, "%"),
         "volume" => integer_or_dash(item.volume, ""),
         "amount" => integer_or_dash(item.amount, "万"),
+        "volume_ratio" => decimal_or_dash(item.volume_ratio),
         "turnover" => {
             if item.turnover.abs() > f32::EPSILON {
                 format!("{:.2}%", item.turnover)
@@ -218,6 +239,14 @@ fn price_or_dash(value: f32) -> String {
 fn integer_or_dash(value: f32, suffix: &str) -> String {
     if value.abs() > f32::EPSILON {
         format!("{value:.0}{suffix}")
+    } else {
+        "-".to_string()
+    }
+}
+
+fn decimal_or_dash(value: f32) -> String {
+    if value.abs() > f32::EPSILON {
+        format!("{value:.2}")
     } else {
         "-".to_string()
     }
@@ -301,17 +330,17 @@ fn build_tray_icon(direction: TrendDirection, (r, g, b): (u8, u8, u8)) -> Image<
 }
 
 fn up_arrow_alpha(x: i32, y: i32) -> u8 {
-    let in_triangle = y >= 5 && y <= 26 && (x - 16).abs() * 21 <= (y - 5) * 13;
+    let in_triangle = (5..=26).contains(&y) && (x - 16).abs() * 21 <= (y - 5) * 13;
     shape_alpha(in_triangle, x, y)
 }
 
 fn down_arrow_alpha(x: i32, y: i32) -> u8 {
-    let in_triangle = y >= 5 && y <= 26 && (x - 16).abs() * 21 <= (26 - y) * 13;
+    let in_triangle = (5..=26).contains(&y) && (x - 16).abs() * 21 <= (26 - y) * 13;
     shape_alpha(in_triangle, x, y)
 }
 
 fn flat_line_alpha(x: i32, y: i32) -> u8 {
-    let in_line = x >= 6 && x <= 26 && y >= 13 && y <= 19;
+    let in_line = (6..=26).contains(&x) && (13..=19).contains(&y);
     shape_alpha(in_line, x, y)
 }
 

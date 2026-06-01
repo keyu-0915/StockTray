@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { addStock, getState, hidePopup, onState, refreshQuotes, saveSettings, setPopupHovered } from './tauri';
 import type { AppConfig, AppStatePayload, DailyPnlItem, StockEntry } from './types';
@@ -16,6 +16,7 @@ type FieldKey =
   | 'change_percent'
   | 'volume'
   | 'amount'
+  | 'volume_ratio'
   | 'turnover'
   | 'holdings'
   | 'cost_price'
@@ -34,6 +35,7 @@ const QUOTE_FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'low', label: '最低' },
   { key: 'volume', label: '成交量' },
   { key: 'amount', label: '成交额' },
+  { key: 'volume_ratio', label: '量比' },
   { key: 'turnover', label: '换手率' },
   { key: 'holdings', label: '持仓' },
   { key: 'cost_price', label: '成本' },
@@ -200,6 +202,8 @@ function formatMetric(field: FieldKey, item: DailyPnlItem) {
       return item.volume ? item.volume.toLocaleString('zh-CN', { maximumFractionDigits: 0 }) : '-';
     case 'amount':
       return item.amount ? `${item.amount.toLocaleString('zh-CN', { maximumFractionDigits: 0 })} 万` : '-';
+    case 'volume_ratio':
+      return item.volume_ratio ? item.volume_ratio.toFixed(2) : '-';
     case 'turnover':
       return item.turnover ? `${item.turnover.toFixed(2)}%` : '-';
     case 'holdings':
@@ -220,6 +224,11 @@ function formatMetric(field: FieldKey, item: DailyPnlItem) {
 function SettingsApp() {
   const [state, setState] = useState<AppStatePayload | null>(null);
   const [draft, setDraft] = useState<AppConfig | null>(null);
+  const [sortState, setSortState] = useState<{ field: 'holdings' | 'change_percent'; direction: 'asc' | 'desc' } | null>(null);
+  const [draggingCode, setDraggingCode] = useState<string | null>(null);
+  const [dragOverCode, setDragOverCode] = useState<string | null>(null);
+  const draggingCodeRef = useRef<string | null>(null);
+  const dragOverCodeRef = useRef<string | null>(null);
   const [code, setCode] = useState('');
   const [holdings, setHoldings] = useState('0');
   const [costPrice, setCostPrice] = useState('');
@@ -245,6 +254,48 @@ function SettingsApp() {
       unlisten.then((fn) => fn()).catch(console.error);
     };
   }, []);
+
+  useEffect(() => {
+    draggingCodeRef.current = draggingCode;
+  }, [draggingCode]);
+
+  useEffect(() => {
+    dragOverCodeRef.current = dragOverCode;
+  }, [dragOverCode]);
+
+  useEffect(() => {
+    if (!draggingCode) return;
+
+    function stockCodeFromPoint(x: number, y: number) {
+      const element = document.elementFromPoint(x, y);
+      return element?.closest<HTMLElement>('[data-stock-code]')?.dataset.stockCode ?? null;
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const code = stockCodeFromPoint(event.clientX, event.clientY);
+      if (code && code !== dragOverCodeRef.current) {
+        setDragOverCode(code);
+      }
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      const dragCode = draggingCodeRef.current;
+      const targetCode = stockCodeFromPoint(event.clientX, event.clientY) ?? dragOverCodeRef.current;
+      if (dragCode && targetCode) {
+        reorderStock(dragCode, targetCode);
+      }
+      finishDrag();
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp, { once: true });
+    window.addEventListener('pointercancel', finishDrag, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', finishDrag);
+    };
+  }, [draggingCode]);
 
   const summary = state?.summary;
   const stocks = draft?.stocks ?? [];
@@ -292,6 +343,7 @@ function SettingsApp() {
   }
 
   function updateStock(code: string, patch: Partial<StockEntry>) {
+    setSortState(null);
     setDraft((current) => current && {
       ...current,
       stocks: current.stocks.map((stock) => stock.code === code ? { ...stock, ...patch } : stock)
@@ -299,6 +351,7 @@ function SettingsApp() {
   }
 
   function selectTooltipStock(code: string) {
+    setSortState(null);
     setDraft((current) => current && {
       ...current,
       stocks: current.stocks.map((stock) => ({
@@ -309,6 +362,7 @@ function SettingsApp() {
   }
 
   function removeStock(code: string) {
+    setSortState(null);
     setDraft((current) => {
       if (!current) return current;
       const nextStocks = current.stocks.filter((stock) => stock.code !== code);
@@ -319,6 +373,54 @@ function SettingsApp() {
         ...current,
         stocks: nextStocks
       };
+    });
+  }
+
+  function moveStock(code: string, direction: -1 | 1) {
+    setSortState(null);
+    setDraft((current) => {
+      if (!current) return current;
+      const index = current.stocks.findIndex((stock) => stock.code === code);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= current.stocks.length) return current;
+      const nextStocks = [...current.stocks];
+      [nextStocks[index], nextStocks[targetIndex]] = [nextStocks[targetIndex], nextStocks[index]];
+      return {
+        ...current,
+        stocks: nextStocks
+      };
+    });
+  }
+
+  function reorderStock(dragCode: string, targetCode: string) {
+    if (dragCode === targetCode) return;
+    setSortState(null);
+    setDraft((current) => {
+      if (!current) return current;
+      const fromIndex = current.stocks.findIndex((stock) => stock.code === dragCode);
+      const toIndex = current.stocks.findIndex((stock) => stock.code === targetCode);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return current;
+      const nextStocks = [...current.stocks];
+      const [moved] = nextStocks.splice(fromIndex, 1);
+      nextStocks.splice(toIndex, 0, moved);
+      return {
+        ...current,
+        stocks: nextStocks
+      };
+    });
+  }
+
+  function finishDrag() {
+    setDraggingCode(null);
+    setDragOverCode(null);
+  }
+
+  function sortStocks(field: 'holdings' | 'change_percent') {
+    const direction = sortState?.field === field && sortState.direction === 'desc' ? 'asc' : 'desc';
+    setSortState({ field, direction });
+    setDraft((current) => current && {
+      ...current,
+      stocks: sortStockEntries(current.stocks, quoteByCode, field, direction)
     });
   }
 
@@ -335,7 +437,10 @@ function SettingsApp() {
     >
       <header className="settings-title">
         <div>
-          <h1>StockTray 设置</h1>
+          <div className="title-line">
+            <h1>StockTray 设置</h1>
+            <span className="version-badge">v{state?.app_version ?? '-'}</span>
+          </div>
           <p>行情、弹窗、托盘提示和外观偏好</p>
         </div>
         <div className="title-actions">
@@ -374,9 +479,17 @@ function SettingsApp() {
         <div className="section-heading">
           <div>
             <h2>自选股管理</h2>
-            <p>名称随行情自动更新，持仓按 100 股取整</p>
+              <p>名称随行情自动更新，持仓可为 0，正数按 100 股取整</p>
           </div>
-          <span>{stocks.filter((stock) => stock.show_in_popup).length} 只显示在弹窗</span>
+          <div className="stock-sort-actions">
+            <button type="button" onClick={() => sortStocks('holdings')}>
+              持仓{sortState?.field === 'holdings' ? (sortState.direction === 'desc' ? '↓' : '↑') : ''}
+            </button>
+            <button type="button" onClick={() => sortStocks('change_percent')}>
+              涨跌幅{sortState?.field === 'change_percent' ? (sortState.direction === 'desc' ? '↓' : '↑') : ''}
+            </button>
+            <span>{stocks.filter((stock) => stock.show_in_popup).length} 只显示在弹窗</span>
+          </div>
         </div>
         <div className="add-row">
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="代码，如 600519" />
@@ -398,9 +511,22 @@ function SettingsApp() {
               <StockTableRow
                 key={stock.code}
                 quote={quoteByCode.get(stock.code)}
+                canMoveDown={stocks[stocks.length - 1]?.code !== stock.code}
+                canMoveUp={stocks[0]?.code !== stock.code}
+                isDragging={draggingCode === stock.code}
+                isDragOver={dragOverCode === stock.code && draggingCode !== stock.code}
                 stock={stock}
                 onChange={(patch) => updateStock(stock.code, patch)}
                 onDelete={() => removeStock(stock.code)}
+                onDragEnd={finishDrag}
+                onDragStart={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  setDraggingCode(stock.code);
+                  setDragOverCode(null);
+                }}
+                onMoveDown={() => moveStock(stock.code, 1)}
+                onMoveUp={() => moveStock(stock.code, -1)}
                 onSelectTooltip={() => selectTooltipStock(stock.code)}
               />
             ))}
@@ -553,22 +679,51 @@ function FieldChecklist({ fields, options, onToggle }: { fields: string[]; optio
 }
 
 function StockTableRow({
+  canMoveDown,
+  canMoveUp,
+  isDragging,
+  isDragOver,
   quote,
   stock,
   onChange,
   onDelete,
+  onDragEnd,
+  onDragStart,
+  onMoveDown,
+  onMoveUp,
   onSelectTooltip
 }: {
+  canMoveDown: boolean;
+  canMoveUp: boolean;
+  isDragging: boolean;
+  isDragOver: boolean;
   quote?: DailyPnlItem;
   stock: StockEntry;
   onChange: (patch: Partial<StockEntry>) => void;
   onDelete: () => void;
+  onDragEnd: () => void;
+  onDragStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onMoveDown: () => void;
+  onMoveUp: () => void;
   onSelectTooltip: () => void;
 }) {
   const quoteTone = toneClass(quote?.change_percent ?? 0);
   return (
-    <div className="stock-table-row stock-table-body" role="row">
+    <div
+      className={`stock-table-row stock-table-body${isDragging ? ' dragging' : ''}${isDragOver ? ' drag-over' : ''}`}
+      data-stock-code={stock.code}
+      role="row"
+    >
       <div className="stock-id">
+        <button
+          className="drag-handle"
+          onPointerCancel={onDragEnd}
+          onPointerDown={onDragStart}
+          title="拖动排序"
+          type="button"
+        >
+          ↕
+        </button>
         <strong>{stock.code.toUpperCase()}</strong>
         <span className="stock-name">{stock.name || '-'}</span>
       </div>
@@ -586,7 +741,7 @@ function StockTableRow({
         <span>持仓</span>
         <input
           type="number"
-          min="100"
+          min="0"
           step="100"
           value={stock.holdings}
           onChange={(e) => onChange({ holdings: normalizeHoldingInput(e.target.value) })}
@@ -605,14 +760,48 @@ function StockTableRow({
         <label><input type="checkbox" checked={stock.show_in_popup} onChange={(e) => onChange({ show_in_popup: e.target.checked })} />弹窗</label>
         <label><input type="radio" name="tooltip-stock" checked={stock.show_in_tooltip} onChange={onSelectTooltip} />提示</label>
       </div>
-      <button className="ghost danger" onClick={onDelete}>删除</button>
+      <div className="row-actions">
+        <button className="ghost icon-button" disabled={!canMoveUp} onClick={onMoveUp} title="上移" type="button">↑</button>
+        <button className="ghost icon-button" disabled={!canMoveDown} onClick={onMoveDown} title="下移" type="button">↓</button>
+        <button className="ghost danger" onClick={onDelete} type="button">删除</button>
+      </div>
     </div>
   );
 }
 
+function sortStockEntries(
+  stocks: StockEntry[],
+  quoteByCode: Map<string, DailyPnlItem>,
+  field: 'holdings' | 'change_percent',
+  direction: 'asc' | 'desc'
+) {
+  return stocks
+    .map((stock, index) => ({ stock, index, value: stockSortValue(stock, quoteByCode, field) }))
+    .sort((left, right) => {
+      const leftMissing = left.value === null;
+      const rightMissing = right.value === null;
+      if (leftMissing && rightMissing) return left.index - right.index;
+      if (leftMissing) return 1;
+      if (rightMissing) return -1;
+      const leftValue = left.value ?? 0;
+      const rightValue = right.value ?? 0;
+      const delta = leftValue - rightValue;
+      if (Math.abs(delta) < Number.EPSILON) return left.index - right.index;
+      return direction === 'asc' ? delta : -delta;
+    })
+    .map((entry) => entry.stock);
+}
+
+function stockSortValue(stock: StockEntry, quoteByCode: Map<string, DailyPnlItem>, field: 'holdings' | 'change_percent') {
+  if (field === 'holdings') return stock.holdings;
+  const value = quoteByCode.get(stock.code)?.change_percent;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function normalizeHoldingInput(value: string) {
-  const raw = Math.max(100, Number(value) || 100);
-  return Math.max(100, Math.round(raw / 100) * 100);
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed / 100) * 100);
 }
 
 function normalizeCostInput(value: string) {

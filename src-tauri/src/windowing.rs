@@ -59,6 +59,8 @@ pub(crate) fn toggle_popup(app: &AppHandle, pos: Option<(i32, i32)>) {
         } else {
             let _ = window.set_size(tauri::Size::Physical(PhysicalSize { width, height }));
         }
+        let _ = window.unminimize();
+        let _ = window.set_always_on_top(true);
         let _ = window.show();
         let _ = window.set_focus();
         let _ = window.emit("stocktray-state", payload);
@@ -68,6 +70,7 @@ pub(crate) fn toggle_popup(app: &AppHandle, pos: Option<(i32, i32)>) {
 
 pub(crate) fn show_window(app: &AppHandle, label: &str) {
     if let Some(window) = app.get_webview_window(label) {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
         let _ = window.emit("stocktray-state", current_payload(app));
@@ -164,7 +167,7 @@ fn popup_dimensions(payload: Option<&AppStatePayload>) -> (u32, u32) {
     let compact = field_count <= 3;
     let balanced = field_count <= 6;
     let width = if compact { 860 } else { 820 };
-    let metric_rows = ((field_count as u32 + 2) / 3).max(1);
+    let metric_rows = (field_count as u32).div_ceil(3).max(1);
     let row_height = if compact {
         88
     } else if balanced {
@@ -174,7 +177,7 @@ fn popup_dimensions(payload: Option<&AppStatePayload>) -> (u32, u32) {
     };
     let cards_per_row = if compact || balanced { 2 } else { 1 };
     let row_groups = if cards_per_row > 1 {
-        ((visible_rows as u32 + cards_per_row - 1) / cards_per_row).clamp(1, 5)
+        (visible_rows as u32).div_ceil(cards_per_row).clamp(1, 5)
     } else {
         (visible_rows as u32).clamp(1, 5)
     };

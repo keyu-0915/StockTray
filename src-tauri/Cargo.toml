@@ -1,6 +1,6 @@
 [package]
 name = "stocktray"
-version = "0.2.9"
+version = "0.2.15"
 description = "Lightweight Windows system tray stock quote app for A-share watchlists and portfolio PnL tracking."
 authors = ["StockTray"]
 license = "GPL-3.0-or-later"
