@@ -4,6 +4,8 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
 ![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg)
 
+[官网 / Website](https://keyu-0915.github.io/StockTray/)
+
 一个安静待在 Windows 托盘里的股票行情小工具。
 
 它不想变成又一个铺满屏幕的行情终端。StockTray 的目标很简单：平时藏在系统托盘里，需要时点一下，弹出一个干净、轻量、带一点 Windows 11 味道的行情浮窗。

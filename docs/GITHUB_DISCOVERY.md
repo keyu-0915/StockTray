@@ -13,7 +13,7 @@ Lightweight Windows tray stock quote app for A-share watchlists, portfolio PnL, 
 Website:
 
 ```text
-https://github.com/<owner>/<repo>/releases
+https://keyu-0915.github.io/StockTray/
 ```
 
 ## Topics
