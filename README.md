@@ -1,4 +1,4 @@
-# StockTray - Windows 托盘股票行情工具
+# StockTray（韭菜托盘） - Windows 托盘股票行情工具
 
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
