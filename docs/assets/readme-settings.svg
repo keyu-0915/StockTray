@@ -1,0 +1,106 @@
+<svg width="1280" height="760" viewBox="0 0 1280 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1280" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101319"/>
+      <stop offset="0.55" stop-color="#191C22"/>
+      <stop offset="1" stop-color="#0C1015"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="140" y1="90" x2="1140" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2A2E36" stop-opacity="0.96"/>
+      <stop offset="1" stop-color="#191C22" stop-opacity="0.96"/>
+    </linearGradient>
+    <filter id="shadow" x="100" y="60" width="1080" height="680" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="760" rx="34" fill="url(#bg)"/>
+  <rect x="54" y="48" width="1172" height="664" rx="28" fill="#0F1218" stroke="#2D3540"/>
+  <rect x="70" y="64" width="1140" height="632" rx="22" fill="url(#panel)" filter="url(#shadow)"/>
+
+  <g font-family="Segoe UI, Microsoft YaHei, Arial, sans-serif">
+    <text x="112" y="127" fill="#F4F7FA" font-size="36" font-weight="700">StockTray 设置</text>
+    <rect x="378" y="100" width="88" height="36" rx="18" fill="#22394A" stroke="#3F7EA3"/>
+    <text x="402" y="124" fill="#9FE4FF" font-size="18" font-weight="600">v0.2.15</text>
+    <text x="112" y="160" fill="#A8B0BC" font-size="17">行情、弹窗、托盘提示和外观偏好</text>
+
+    <rect x="942" y="98" width="84" height="42" rx="10" fill="#232832" stroke="#3B424D"/>
+    <text x="970" y="125" fill="#DCE4EC" font-size="16" font-weight="600">刷新</text>
+    <rect x="1042" y="98" width="92" height="42" rx="10" fill="#69D4FF"/>
+    <text x="1073" y="125" fill="#081016" font-size="16" font-weight="700">保存</text>
+
+    <rect x="112" y="194" width="340" height="128" rx="16" fill="#202630" stroke="#343C49"/>
+    <text x="136" y="232" fill="#E9EEF5" font-size="20" font-weight="700">今日汇总</text>
+    <text x="136" y="266" fill="#9FA9B5" font-size="15">总持仓日内表现</text>
+    <text x="136" y="302" fill="#FF8B98" font-size="30" font-weight="700">+1,286.00</text>
+    <text x="304" y="301" fill="#FF8B98" font-size="22" font-weight="700">+1.74%</text>
+
+    <rect x="478" y="194" width="300" height="128" rx="16" fill="#202630" stroke="#343C49"/>
+    <text x="502" y="232" fill="#E9EEF5" font-size="20" font-weight="700">后台刷新</text>
+    <text x="502" y="266" fill="#9FA9B5" font-size="15">每 10 秒更新托盘数据</text>
+    <rect x="502" y="286" width="148" height="18" rx="9" fill="#2E5667"/>
+    <rect x="502" y="286" width="98" height="18" rx="9" fill="#69D4FF"/>
+
+    <rect x="804" y="194" width="330" height="128" rx="16" fill="#202630" stroke="#343C49"/>
+    <text x="828" y="232" fill="#E9EEF5" font-size="20" font-weight="700">弹窗外观</text>
+    <text x="828" y="266" fill="#9FA9B5" font-size="15">Acrylic · 圆角 · 自动隐藏</text>
+    <circle cx="840" cy="296" r="12" fill="#C73E4E"/>
+    <circle cx="878" cy="296" r="12" fill="#5B8C5A"/>
+    <circle cx="916" cy="296" r="12" fill="#999999"/>
+
+    <rect x="112" y="356" width="1022" height="282" rx="18" fill="#1C212A" stroke="#333B47"/>
+    <text x="140" y="397" fill="#F4F7FA" font-size="24" font-weight="700">自选股管理</text>
+    <text x="140" y="424" fill="#A8B0BC" font-size="15">拖动排序、持仓可为 0，正数按 100 股取整</text>
+
+    <rect x="828" y="376" width="82" height="36" rx="9" fill="#252B35" stroke="#3C4552"/>
+    <text x="852" y="399" fill="#E9EEF5" font-size="15">持仓↓</text>
+    <rect x="922" y="376" width="92" height="36" rx="9" fill="#252B35" stroke="#3C4552"/>
+    <text x="942" y="399" fill="#E9EEF5" font-size="15">涨跌幅</text>
+    <text x="1030" y="399" fill="#9FA9B5" font-size="15">3 只显示在弹窗</text>
+
+    <g font-size="15">
+      <text x="150" y="470" fill="#798493">代码</text>
+      <text x="340" y="470" fill="#798493">最新价</text>
+      <text x="470" y="470" fill="#798493">涨跌幅</text>
+      <text x="610" y="470" fill="#798493">持仓</text>
+      <text x="746" y="470" fill="#798493">显示</text>
+      <text x="924" y="470" fill="#798493">排序</text>
+    </g>
+
+    <g>
+      <rect x="136" y="490" width="970" height="54" rx="12" fill="#242A34"/>
+      <text x="154" y="523" fill="#A8B0BC" font-size="22">↕</text>
+      <text x="196" y="513" fill="#F2F6FA" font-size="17" font-weight="700">SZ000001</text>
+      <text x="196" y="533" fill="#9FA9B5" font-size="13">平安银行</text>
+      <text x="340" y="523" fill="#F2F6FA" font-size="17" font-weight="700">10.25</text>
+      <text x="470" y="523" fill="#FF8B98" font-size="17" font-weight="700">+2.50%</text>
+      <rect x="610" y="503" width="92" height="28" rx="7" fill="#1C212A" stroke="#3C4552"/>
+      <text x="636" y="523" fill="#F2F6FA" font-size="15">1200</text>
+      <rect x="746" y="507" width="18" height="18" rx="4" fill="#69D4FF"/>
+      <rect x="808" y="507" width="18" height="18" rx="9" fill="#69D4FF"/>
+      <rect x="910" y="503" width="34" height="28" rx="7" fill="#1C212A" stroke="#3C4552"/>
+      <text x="921" y="523" fill="#DCE4EC" font-size="16">↑</text>
+      <rect x="952" y="503" width="34" height="28" rx="7" fill="#1C212A" stroke="#3C4552"/>
+      <text x="963" y="523" fill="#DCE4EC" font-size="16">↓</text>
+      <text x="1020" y="523" fill="#FF9AA6" font-size="15" font-weight="600">删除</text>
+    </g>
+
+    <g>
+      <rect x="136" y="556" width="970" height="54" rx="12" fill="#202630" stroke="#69D4FF" stroke-opacity="0.45"/>
+      <text x="154" y="589" fill="#A8B0BC" font-size="22">↕</text>
+      <text x="196" y="579" fill="#F2F6FA" font-size="17" font-weight="700">SH600519</text>
+      <text x="196" y="599" fill="#9FA9B5" font-size="13">贵州茅台</text>
+      <text x="340" y="589" fill="#F2F6FA" font-size="17" font-weight="700">1468.30</text>
+      <text x="470" y="589" fill="#6BCA7A" font-size="17" font-weight="700">-0.42%</text>
+      <rect x="610" y="569" width="92" height="28" rx="7" fill="#1C212A" stroke="#3C4552"/>
+      <text x="640" y="589" fill="#F2F6FA" font-size="15">300</text>
+      <rect x="746" y="573" width="18" height="18" rx="4" fill="#69D4FF"/>
+      <rect x="808" y="573" width="18" height="18" rx="9" fill="#2B313C" stroke="#69D4FF"/>
+      <rect x="910" y="569" width="34" height="28" rx="7" fill="#1C212A" stroke="#3C4552"/>
+      <text x="921" y="589" fill="#DCE4EC" font-size="16">↑</text>
+      <rect x="952" y="569" width="34" height="28" rx="7" fill="#1C212A" stroke="#3C4552"/>
+      <text x="963" y="589" fill="#DCE4EC" font-size="16">↓</text>
+      <text x="1020" y="589" fill="#FF9AA6" font-size="15" font-weight="600">删除</text>
+    </g>
+  </g>
+</svg>

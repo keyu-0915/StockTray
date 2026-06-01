@@ -12,6 +12,12 @@
 
 StockTray is a lightweight Windows system tray stock quote app for people who want a quiet A-share watchlist, portfolio profit/loss glance, and quick market popup without keeping a full trading terminal open.
 
+## 界面预览
+
+![StockTray 设置页预览](docs/assets/readme-settings.svg)
+
+![StockTray 行情弹窗预览](docs/assets/readme-popup.svg)
+
 ## 适合谁
 
 - 想在 Windows 系统托盘里常驻查看股票行情、自选股和持仓盈亏的人。
@@ -105,7 +111,7 @@ npm run release
 releases/StockTray_<version>_x64-setup.exe
 ```
 
-当前最新版本：`0.2.9`
+当前最新版本：`0.2.15`
 
 ## 项目结构
 

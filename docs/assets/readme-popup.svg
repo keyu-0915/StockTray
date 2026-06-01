@@ -1,0 +1,85 @@
+<svg width="1280" height="560" viewBox="0 0 1280 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="desk" x1="0" y1="0" x2="1280" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111722"/>
+      <stop offset="0.5" stop-color="#1F2733"/>
+      <stop offset="1" stop-color="#0C1118"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="330" y1="84" x2="950" y2="476" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#313946" stop-opacity="0.88"/>
+      <stop offset="1" stop-color="#171B22" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="shadow" x="250" y="34" width="780" height="492" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="560" rx="32" fill="url(#desk)"/>
+  <g opacity="0.34">
+    <rect x="90" y="80" width="220" height="18" rx="9" fill="#314052"/>
+    <rect x="90" y="118" width="300" height="18" rx="9" fill="#263442"/>
+    <rect x="90" y="156" width="250" height="18" rx="9" fill="#263442"/>
+    <rect x="940" y="92" width="210" height="18" rx="9" fill="#263442"/>
+    <rect x="886" y="130" width="264" height="18" rx="9" fill="#314052"/>
+    <rect x="986" y="168" width="164" height="18" rx="9" fill="#263442"/>
+  </g>
+
+  <rect x="312" y="66" width="656" height="428" rx="26" fill="url(#glass)" stroke="#5B6778" filter="url(#shadow)"/>
+  <rect x="330" y="84" width="620" height="392" rx="18" fill="#1D232D" fill-opacity="0.72" stroke="#46515E"/>
+
+  <g font-family="Segoe UI, Microsoft YaHei, Arial, sans-serif">
+    <rect x="350" y="104" width="580" height="66" rx="14" fill="#27303C"/>
+    <text x="376" y="137" fill="#AEB8C5" font-size="16">今日合计</text>
+    <text x="376" y="159" fill="#FF8B98" font-size="28" font-weight="700">+1,286.00</text>
+    <text x="828" y="148" fill="#FF8B98" font-size="24" font-weight="700">+1.74%</text>
+
+    <g>
+      <rect x="350" y="188" width="580" height="82" rx="14" fill="#242C36"/>
+      <text x="374" y="222" fill="#F3F6FA" font-size="21" font-weight="700">平安银行</text>
+      <text x="374" y="247" fill="#8792A0" font-size="15">SZ000001</text>
+      <rect x="545" y="206" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="565" y="224" fill="#97A2AE" font-size="13">最新价</text>
+      <text x="565" y="244" fill="#F3F6FA" font-size="19" font-weight="700">10.25</text>
+      <rect x="670" y="206" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="690" y="224" fill="#97A2AE" font-size="13">涨跌幅</text>
+      <text x="690" y="244" fill="#FF8B98" font-size="19" font-weight="700">+2.50%</text>
+      <rect x="795" y="206" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="815" y="224" fill="#97A2AE" font-size="13">当日盈亏</text>
+      <text x="815" y="244" fill="#FF8B98" font-size="19" font-weight="700">+300</text>
+    </g>
+
+    <g>
+      <rect x="350" y="286" width="580" height="82" rx="14" fill="#242C36"/>
+      <text x="374" y="320" fill="#F3F6FA" font-size="21" font-weight="700">贵州茅台</text>
+      <text x="374" y="345" fill="#8792A0" font-size="15">SH600519</text>
+      <rect x="545" y="304" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="565" y="322" fill="#97A2AE" font-size="13">最新价</text>
+      <text x="565" y="342" fill="#F3F6FA" font-size="19" font-weight="700">1468.30</text>
+      <rect x="670" y="304" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="690" y="322" fill="#97A2AE" font-size="13">涨跌幅</text>
+      <text x="690" y="342" fill="#6BCA7A" font-size="19" font-weight="700">-0.42%</text>
+      <rect x="795" y="304" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="815" y="322" fill="#97A2AE" font-size="13">当日盈亏</text>
+      <text x="815" y="342" fill="#6BCA7A" font-size="19" font-weight="700">-620</text>
+    </g>
+
+    <g>
+      <rect x="350" y="384" width="580" height="70" rx="14" fill="#242C36"/>
+      <text x="374" y="425" fill="#F3F6FA" font-size="21" font-weight="700">宁德时代</text>
+      <text x="374" y="446" fill="#8792A0" font-size="15">SZ300750</text>
+      <rect x="545" y="397" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="565" y="415" fill="#97A2AE" font-size="13">最新价</text>
+      <text x="565" y="435" fill="#F3F6FA" font-size="19" font-weight="700">198.40</text>
+      <rect x="670" y="397" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="690" y="415" fill="#97A2AE" font-size="13">涨跌幅</text>
+      <text x="690" y="435" fill="#FF8B98" font-size="19" font-weight="700">+1.28%</text>
+      <rect x="795" y="397" width="112" height="44" rx="10" fill="#1C222B"/>
+      <text x="815" y="415" fill="#97A2AE" font-size="13">量比</text>
+      <text x="815" y="435" fill="#F3F6FA" font-size="19" font-weight="700">1.36</text>
+    </g>
+
+    <rect x="540" y="502" width="200" height="28" rx="14" fill="#10151C" stroke="#313A46"/>
+    <circle cx="568" cy="516" r="8" fill="#C73E4E"/>
+    <text x="586" y="522" fill="#AEB8C5" font-size="14">托盘悬浮行情弹窗</text>
+  </g>
+</svg>
