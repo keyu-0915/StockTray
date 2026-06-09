@@ -1,6 +1,6 @@
 [package]
 name = "stocktray"
-version = "0.2.15"
+version = "0.2.16"
 description = "Lightweight Windows system tray stock quote app for A-share watchlists and portfolio PnL tracking."
 authors = ["StockTray"]
 license = "GPL-3.0-or-later"
@@ -22,4 +22,5 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-updater = "2.10.1"
 tokio = { version = "1", features = ["sync", "time"] }

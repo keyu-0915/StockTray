@@ -1,6 +1,8 @@
 use std::time::Duration;
 
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_updater::UpdaterExt;
 use tokio::time::sleep;
 
 mod config;
@@ -21,6 +23,7 @@ use windowing::{emit_state_to_windows, hide_popup_window, set_popup_hovered_stat
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(SharedState::new(load_config(), config_path()))
         .invoke_handler(tauri::generate_handler![
             get_state,
@@ -28,7 +31,8 @@ pub fn run() {
             add_stock,
             refresh_quotes,
             hide_popup,
-            set_popup_hovered
+            set_popup_hovered,
+            check_and_install_update
         ])
         .on_window_event(|window, event| {
             if window.label() == "settings" {
@@ -54,7 +58,7 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("failed to run StockTray");
+        .expect("failed to run 韭菜托盘");
 }
 
 #[tauri::command]
@@ -211,6 +215,44 @@ pub(crate) async fn refresh_quotes_inner(app: &AppHandle) -> Result<DailySummary
     emit_state_to_windows(app);
     update_tray_status(app, &summary);
     Ok(summary)
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct UpdateCheckResult {
+    available: bool,
+    current_version: String,
+    version: Option<String>,
+}
+
+#[tauri::command]
+async fn check_and_install_update(app: AppHandle) -> Result<UpdateCheckResult, String> {
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(update) = update {
+        let version = update.version.to_string();
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        app.restart();
+        Ok(UpdateCheckResult {
+            available: true,
+            current_version,
+            version: Some(version),
+        })
+    } else {
+        Ok(UpdateCheckResult {
+            available: false,
+            current_version,
+            version: None,
+        })
+    }
 }
 
 fn record_refresh_error(app: &AppHandle, err: &str) {

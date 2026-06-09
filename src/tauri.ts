@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { AppConfig, AppStatePayload, DailySummary } from './types';
+import type { AppConfig, AppStatePayload, DailySummary, UpdateCheckResult } from './types';
 
 export async function getState(): Promise<AppStatePayload> {
   return invoke<AppStatePayload>('get_state');
@@ -8,6 +8,10 @@ export async function getState(): Promise<AppStatePayload> {
 
 export async function refreshQuotes(): Promise<DailySummary> {
   return invoke<DailySummary>('refresh_quotes');
+}
+
+export async function checkAndInstallUpdate(): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>('check_and_install_update');
 }
 
 export async function saveSettings(config: AppConfig): Promise<AppStatePayload> {

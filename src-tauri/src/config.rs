@@ -110,13 +110,21 @@ pub(crate) fn normalize_config(mut config: AppConfig) -> AppConfig {
     config
 }
 
-fn migrate_config(_config: &mut AppConfig, from_version: u32) {
+fn migrate_config(config: &mut AppConfig, from_version: u32) {
     if from_version < 2 {
         // v2 makes tray tooltip stock selection single-choice. The normalizer below
         // enforces the final invariant while preserving the first existing choice.
     }
     if from_version < 3 {
         // v3 adds background quote refresh. Serde default fills the field for old configs.
+    }
+    if from_version < 4
+        && !config
+            .tooltip_fields
+            .iter()
+            .any(|field| field == "position_pnl")
+    {
+        config.tooltip_fields.push("position_pnl".into());
     }
 }
 
@@ -139,7 +147,7 @@ pub(crate) fn normalize_holding(value: f32) -> f32 {
 
 pub(crate) fn normalize_cost_price(value: f32) -> f32 {
     if value.is_finite() {
-        round2(value)
+        round3(value)
     } else {
         0.0
     }
@@ -225,6 +233,6 @@ fn default_config() -> AppConfig {
     }
 }
 
-fn round2(value: f32) -> f32 {
-    (value * 100.0).round() / 100.0
+fn round3(value: f32) -> f32 {
+    (value * 1000.0).round() / 1000.0
 }

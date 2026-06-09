@@ -1,6 +1,6 @@
 # 架构说明
 
-StockTray 采用“Rust 后端 + React 前端”的 Tauri 架构。后端负责系统级能力和数据逻辑，前端负责设置页、弹窗和视觉表现。
+韭菜托盘采用“Rust 后端 + React 前端”的 Tauri 架构。内部包名和配置目录仍沿用 StockTray，以保持升级兼容。后端负责系统级能力和数据逻辑，前端负责设置页、弹窗和视觉表现。
 
 ## 分层
 
@@ -91,7 +91,7 @@ Rust Core
 当前使用 Tauri NSIS 打包，生成 Windows 安装包。历史上讨论过便携文件夹形态，但当前脚本主要产物是：
 
 ```text
-releases/StockTray_<version>_x64-setup.exe
+releases/韭菜托盘_<version>_x64-setup.exe
 ```
 
 如果后续需要 portable zip，可以在 `scripts/package-release.ps1` 中扩展复制 `src-tauri/target/release/stocktray.exe` 及运行资源的逻辑。

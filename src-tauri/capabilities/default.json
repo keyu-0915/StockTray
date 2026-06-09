@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default permissions for StockTray windows",
+  "description": "Default permissions for 韭菜托盘 windows",
   "windows": ["settings", "popup"],
   "permissions": ["core:default"]
 }

@@ -26,7 +26,7 @@ pub(crate) fn create_tray(app: &AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id(MAIN_TRAY_ID)
         .icon(tray_status_icon(0.0, 0.0))
-        .tooltip("StockTray")
+        .tooltip("韭菜托盘")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -107,7 +107,7 @@ pub(crate) fn update_tray_status(app: &AppHandle, summary: &DailySummary) {
             .map(|payload| build_native_tray_tooltip(&payload.config, summary, trend))
             .unwrap_or_else(|| {
                 format!(
-                    "StockTray 今日{} {} ({:+.2}%)",
+                    "韭菜托盘 今日{} {} ({:+.2}%)",
                     trend, summary.total_daily_pnl, summary.total_daily_pnl_percent
                 )
             });
@@ -127,7 +127,7 @@ fn build_native_tray_tooltip(config: &AppConfig, summary: &DailySummary, trend: 
     }
 
     let mut lines = vec![format!(
-        "StockTray 今日{} {} ({:+.2}%)",
+        "韭菜托盘 今日{} {} ({:+.2}%)",
         trend, summary.total_daily_pnl, summary.total_daily_pnl_percent
     )];
 
@@ -198,7 +198,7 @@ fn tray_tooltip_field_value(field: &str, item: &DailyPnlItem) -> String {
         "open" => price_or_dash(item.open),
         "high" => price_or_dash(item.high),
         "low" => price_or_dash(item.low),
-        "change" => format_signed(item.change, 2, ""),
+        "change" => format_signed(item.change, 3, ""),
         "change_percent" => format_signed(item.change_percent, 2, "%"),
         "volume" => integer_or_dash(item.volume, ""),
         "amount" => integer_or_dash(item.amount, "万"),
@@ -211,7 +211,7 @@ fn tray_tooltip_field_value(field: &str, item: &DailyPnlItem) -> String {
             }
         }
         "holdings" => format!("{:.0}", item.holdings),
-        "cost_price" => format!("{:.2}", item.cost_price),
+        "cost_price" => format!("{:.3}", item.cost_price),
         "daily_pnl" => format_signed(item.daily_pnl, 0, ""),
         "daily_pnl_percent" => format_signed(item.daily_pnl_percent, 2, "%"),
         "position_pnl" => format_signed(item.position_pnl, 0, ""),
@@ -230,7 +230,7 @@ fn non_empty_or_dash(value: &str) -> String {
 
 fn price_or_dash(value: f32) -> String {
     if value.abs() > f32::EPSILON {
-        format!("{value:.2}")
+        format!("{value:.3}")
     } else {
         "-".to_string()
     }

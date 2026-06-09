@@ -54,7 +54,7 @@ vite
 Release 标题建议同时包含版本和用途，例如：
 
 ```text
-StockTray v0.2.9 - Windows tray stock quote app
+韭菜托盘 StockTray v0.2.9 - Windows tray stock quote app
 ```
 
 Release 描述前两行建议保留英文摘要和中文摘要，方便 GitHub、搜索引擎和非中文用户快速判断项目用途。

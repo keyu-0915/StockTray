@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub(crate) const CURRENT_CONFIG_SCHEMA_VERSION: u32 = 3;
+pub(crate) const CURRENT_CONFIG_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AppConfig {
@@ -198,7 +198,7 @@ pub(crate) fn default_display_fields() -> Vec<String> {
 }
 
 pub(crate) fn default_tooltip_fields() -> Vec<String> {
-    ["price", "change_percent", "daily_pnl"]
+    ["price", "change_percent", "daily_pnl", "position_pnl"]
         .into_iter()
         .map(String::from)
         .collect()

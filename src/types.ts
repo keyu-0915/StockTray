@@ -75,3 +75,9 @@ export type AppStatePayload = {
   last_refreshed_at: string | null;
   last_error: string | null;
 };
+
+export type UpdateCheckResult = {
+  available: boolean;
+  current_version: string;
+  version: string | null;
+};

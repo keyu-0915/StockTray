@@ -19,6 +19,8 @@ releases/
 # Environment and secrets
 .env
 .env.*
+.tauri-updater.key
+.tauri-updater.key.pub
 
 # OS metadata
 Thumbs.db

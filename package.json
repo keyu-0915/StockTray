@@ -1,11 +1,12 @@
 {
   "name": "stocktray",
   "private": true,
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "Lightweight Windows system tray stock quote app for A-share watchlists and portfolio PnL tracking.",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "keywords": [
+    "韭菜托盘",
     "stocktray",
     "stock",
     "stocks",

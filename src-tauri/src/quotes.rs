@@ -73,7 +73,7 @@ async fn fetch_eastmoney(client: &Client, codes: &[String]) -> Result<Vec<StockD
             let mut change = json_f32(item, "f4");
             let mut change_percent = json_f32(item, "f3");
             if change == 0.0 && prev_close > 0.0 && price > 0.0 {
-                change = round2(price - prev_close);
+                change = round3(price - prev_close);
             }
             if change_percent == 0.0 && prev_close > 0.0 && price > 0.0 {
                 change_percent = round2((price - prev_close) / prev_close * 100.0);
@@ -147,7 +147,7 @@ fn parse_sina_line(code: &str, line: &str) -> StockData {
     let price = parse_f32(parts[3]);
     let prev_close = parse_f32(parts[2]);
     let change = if prev_close > 0.0 && price > 0.0 {
-        round2(price - prev_close)
+        round3(price - prev_close)
     } else {
         0.0
     };
@@ -219,6 +219,10 @@ fn round2(value: f32) -> f32 {
     (value * 100.0).round() / 100.0
 }
 
+fn round3(value: f32) -> f32 {
+    (value * 1000.0).round() / 1000.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,11 +252,11 @@ mod tests {
     fn parse_sina_line_computes_change_fields() {
         let mut parts = vec!["0"; 32];
         parts[0] = "Ping An Bank";
-        parts[1] = "10.10";
-        parts[2] = "10.00";
-        parts[3] = "10.25";
-        parts[4] = "10.30";
-        parts[5] = "9.95";
+        parts[1] = "10.100";
+        parts[2] = "10.001";
+        parts[3] = "10.255";
+        parts[4] = "10.300";
+        parts[5] = "9.950";
         parts[8] = "123400";
         parts[9] = "5678000";
         parts[30] = "2026-06-01";
@@ -262,10 +266,10 @@ mod tests {
 
         assert_eq!(data.code, "sz000001");
         assert_eq!(data.name, "Ping An Bank");
-        assert_close(data.price, 10.25);
-        assert_close(data.prev_close, 10.00);
-        assert_close(data.change, 0.25);
-        assert_close(data.change_percent, 2.50);
+        assert_close(data.price, 10.255);
+        assert_close(data.prev_close, 10.001);
+        assert_close(data.change, 0.254);
+        assert_close(data.change_percent, 2.54);
         assert_close(data.volume, 1234.0);
         assert_close(data.amount, 5_678_000.0);
         assert_eq!(data.date, "2026-06-01");

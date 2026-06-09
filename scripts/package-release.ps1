@@ -5,6 +5,8 @@ Set-Location $root
 
 $package = Get-Content "package.json" -Raw -Encoding UTF8 | ConvertFrom-Json
 $version = $package.version
+$tauriConfig = Get-Content "src-tauri\tauri.conf.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+$productName = $tauriConfig.productName
 
 $cargoCommand = Get-Command cargo -ErrorAction SilentlyContinue
 if ($cargoCommand) {
@@ -43,11 +45,11 @@ Invoke-Checked $cargo test --manifest-path "src-tauri\Cargo.toml"
 Invoke-Checked $cargo clippy --manifest-path "src-tauri\Cargo.toml" "--" "-D" "warnings"
 Invoke-Checked npm run tauri:build
 
-$expectedInstaller = Join-Path $root "src-tauri\target\release\bundle\nsis\StockTray_${version}_x64-setup.exe"
+$expectedInstaller = Join-Path $root "src-tauri\target\release\bundle\nsis\${productName}_${version}_x64-setup.exe"
 if (Test-Path $expectedInstaller) {
   $installer = Get-Item $expectedInstaller
 } else {
-  $installer = Get-ChildItem (Join-Path $root "src-tauri\target\release\bundle\nsis") -Filter "StockTray_*_x64-setup.exe" |
+  $installer = Get-ChildItem (Join-Path $root "src-tauri\target\release\bundle\nsis") -Filter "${productName}_*_x64-setup.exe" |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
 }
@@ -58,7 +60,7 @@ if (-not $installer) {
 
 $releaseDir = Join-Path $root "releases"
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-$target = Join-Path $releaseDir "StockTray_${version}_x64-setup.exe"
+$target = Join-Path $releaseDir "${productName}_${version}_x64-setup.exe"
 Copy-Item $installer.FullName $target -Force
 
 Write-Host "Packaged $target"

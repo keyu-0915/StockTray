@@ -1,6 +1,6 @@
 # 开发与发布流程
 
-本文档记录 StockTray 的本地开发、验证和发布步骤。
+本文档记录韭菜托盘的本地开发、验证和发布步骤。内部包名仍为 StockTray。
 
 ## 安装依赖
 
@@ -81,7 +81,7 @@ npm run release
 成功后会生成：
 
 ```text
-releases/StockTray_<version>_x64-setup.exe
+releases/韭菜托盘_<version>_x64-setup.exe
 ```
 
 同时 Tauri 自身产物位于：

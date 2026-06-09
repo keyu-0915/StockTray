@@ -19,7 +19,7 @@
   <rect x="70" y="64" width="1140" height="632" rx="22" fill="url(#panel)" filter="url(#shadow)"/>
 
   <g font-family="Segoe UI, Microsoft YaHei, Arial, sans-serif">
-    <text x="112" y="127" fill="#F4F7FA" font-size="36" font-weight="700">StockTray 设置</text>
+    <text x="112" y="127" fill="#F4F7FA" font-size="36" font-weight="700">韭菜托盘设置</text>
     <rect x="378" y="100" width="88" height="36" rx="18" fill="#22394A" stroke="#3F7EA3"/>
     <text x="402" y="124" fill="#9FE4FF" font-size="18" font-weight="600">v0.2.15</text>
     <text x="112" y="160" fill="#A8B0BC" font-size="17">行情、弹窗、托盘提示和外观偏好</text>

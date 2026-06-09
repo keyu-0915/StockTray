@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { addStock, getState, hidePopup, onState, refreshQuotes, saveSettings, setPopupHovered } from './tauri';
+import { addStock, checkAndInstallUpdate, getState, hidePopup, onState, refreshQuotes, saveSettings, setPopupHovered } from './tauri';
 import type { AppConfig, AppStatePayload, DailyPnlItem, StockEntry } from './types';
 import './styles.css';
 
@@ -52,11 +52,15 @@ const TOOLTIP_FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
 ];
 
 const DEFAULT_POPUP_FIELDS: FieldKey[] = ['price', 'change_percent', 'daily_pnl', 'daily_pnl_percent'];
-const DEFAULT_TOOLTIP_FIELDS: FieldKey[] = ['price', 'change_percent', 'daily_pnl'];
+const DEFAULT_TOOLTIP_FIELDS: FieldKey[] = ['price', 'change_percent', 'daily_pnl', 'position_pnl'];
 
 function formatSigned(value: number, digits = 2, suffix = '') {
   const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(digits)}${suffix}`;
+}
+
+function formatPrice(value: number) {
+  return value ? value.toFixed(3) : '-';
 }
 
 function toneClass(value: number) {
@@ -185,17 +189,17 @@ function formatMetric(field: FieldKey, item: DailyPnlItem) {
     case 'code':
       return item.code.toUpperCase();
     case 'price':
-      return item.price ? item.price.toFixed(2) : '-';
+      return formatPrice(item.price);
     case 'prev_close':
-      return item.prev_close ? item.prev_close.toFixed(2) : '-';
+      return formatPrice(item.prev_close);
     case 'open':
-      return item.open ? item.open.toFixed(2) : '-';
+      return formatPrice(item.open);
     case 'high':
-      return item.high ? item.high.toFixed(2) : '-';
+      return formatPrice(item.high);
     case 'low':
-      return item.low ? item.low.toFixed(2) : '-';
+      return formatPrice(item.low);
     case 'change':
-      return formatSigned(item.change, 2);
+      return formatSigned(item.change, 3);
     case 'change_percent':
       return formatSigned(item.change_percent, 2, '%');
     case 'volume':
@@ -209,7 +213,7 @@ function formatMetric(field: FieldKey, item: DailyPnlItem) {
     case 'holdings':
       return item.holdings.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
     case 'cost_price':
-      return item.cost_price.toFixed(2);
+      return item.cost_price.toFixed(3);
     case 'daily_pnl':
       return formatSigned(item.daily_pnl, 0);
     case 'daily_pnl_percent':
@@ -233,6 +237,7 @@ function SettingsApp() {
   const [holdings, setHoldings] = useState('0');
   const [costPrice, setCostPrice] = useState('');
   const [message, setMessage] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     document.body.dataset.view = 'settings';
@@ -342,6 +347,24 @@ function SettingsApp() {
     }
   }
 
+  async function handleCheckUpdate() {
+    if (updating) return;
+    setUpdating(true);
+    setMessage('正在检查更新...');
+    try {
+      const result = await checkAndInstallUpdate();
+      if (result.available) {
+        setMessage(`已安装新版本 ${result.version ?? ''}，正在重启...`);
+      } else {
+        setMessage(`当前已是最新版本 v${result.current_version}`);
+      }
+    } catch (err) {
+      setMessage(`检查更新失败：${String(err)}`);
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   function updateStock(code: string, patch: Partial<StockEntry>) {
     setSortState(null);
     setDraft((current) => current && {
@@ -438,12 +461,15 @@ function SettingsApp() {
       <header className="settings-title">
         <div>
           <div className="title-line">
-            <h1>StockTray 设置</h1>
+            <h1>韭菜托盘设置</h1>
             <span className="version-badge">v{state?.app_version ?? '-'}</span>
           </div>
           <p>行情、弹窗、托盘提示和外观偏好</p>
         </div>
         <div className="title-actions">
+          <button disabled={updating} onClick={handleCheckUpdate}>
+            {updating ? '检查中...' : '检查更新'}
+          </button>
           <button onClick={handleRefresh}>立即刷新</button>
           <button className="primary" onClick={handleSave}>保存并应用</button>
         </div>
@@ -494,7 +520,7 @@ function SettingsApp() {
         <div className="add-row">
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="代码，如 600519" />
           <input value={holdings} onChange={(e) => setHoldings(e.target.value)} placeholder="持仓" type="number" min="0" step="100" />
-          <input value={costPrice} onChange={(e) => setCostPrice(e.target.value)} placeholder="成本，留空取实时价" type="number" step="0.01" />
+          <input value={costPrice} onChange={(e) => setCostPrice(e.target.value)} placeholder="成本，留空取实时价" type="number" step="0.001" />
           <button onClick={handleAdd}>添加</button>
         </div>
         <div className="stock-table-wrap">
@@ -730,7 +756,7 @@ function StockTableRow({
       <div className="stock-quote">
         <span>
           <small>最新价</small>
-          <strong className={quoteTone}>{quote?.price ? quote.price.toFixed(2) : '-'}</strong>
+          <strong className={quoteTone}>{quote ? formatPrice(quote.price) : '-'}</strong>
         </span>
         <span>
           <small>涨跌幅</small>
@@ -751,7 +777,7 @@ function StockTableRow({
         <span>成本</span>
         <input
           type="number"
-          step="0.01"
+          step="0.001"
           value={stock.cost_price}
           onChange={(e) => onChange({ cost_price: normalizeCostInput(e.target.value) })}
         />
@@ -806,7 +832,7 @@ function normalizeHoldingInput(value: string) {
 
 function normalizeCostInput(value: string) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
+  return Number.isFinite(parsed) ? Math.round(parsed * 1000) / 1000 : 0;
 }
 
 function updateAppearance(config: AppConfig, patch: Partial<AppConfig['appearance']> & { theme?: string }): AppConfig {

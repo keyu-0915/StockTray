@@ -1,8 +1,12 @@
 # StockTray Releases
 
-## Unreleased
+## 0.2.16 - Manual updater and precision
 
-- Next changes will be listed here.
+- Renamed the user-facing app name to `韭菜托盘` while keeping internal package identifiers stable as StockTray.
+- Added a manual GitHub Release updater from the settings window.
+- Added updater signing and a GitHub Actions release workflow that publishes `latest.json`.
+- Displayed stock prices and cost prices to three decimal places.
+- Added position PnL to the default tray tooltip fields.
 
 ## 0.2.15 - Reliable drag ordering
 
