@@ -1,0 +1,47 @@
+.glass-panel {
+  background: var(--theme-glass-fill);
+  backdrop-filter: blur(var(--theme-glass-blur));
+  -webkit-backdrop-filter: blur(var(--theme-glass-blur));
+  border: var(--theme-glass-border);
+  box-shadow: var(--theme-glass-shadow, none);
+}
+
+.theme-light-terminal .glass-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: var(--theme-glass-inner-highlight, none);
+}
+
+.theme-liquid-glass .glass-panel {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.02),
+    var(--theme-glass-shadow, none);
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-liquid-glass .glass-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--theme-glass-noise, none) repeat;
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.glow-up {
+  box-shadow: 0 0 10px rgba(78, 222, 163, 0.4);
+}
+
+.glow-down {
+  box-shadow: 0 0 10px rgba(255, 179, 173, 0.4);
+}

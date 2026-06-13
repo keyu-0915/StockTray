@@ -2,7 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { addStock, checkAndInstallUpdate, getState, hidePopup, onState, refreshQuotes, saveSettings, setPopupHovered } from './tauri';
 import type { AppConfig, AppStatePayload, DailyPnlItem, StockEntry } from './types';
+import type { ThemeMode } from './themes/types';
+import { ThemeProvider, useTheme } from './themes/ThemeProvider';
+import { ThemeSelector } from './themes/ThemeSelector';
 import './styles.css';
+import './themes/glass-effects.css';
 
 type FieldKey =
   | 'name'
@@ -96,13 +100,16 @@ function PopupApp() {
   const rows = state?.summary?.items.filter((item) => item.show_in_popup) ?? [];
   const summary = state?.summary;
   const config = state?.config;
-  const fields = selectedFields(config, 'display_fields', DEFAULT_POPUP_FIELDS, QUOTE_FIELD_OPTIONS);
+
+  const { theme } = useTheme();
+  const upColor = config?.popup.up_color ?? theme.colors.up;
+  const downColor = config?.popup.down_color ?? theme.colors.down;
+  const flatColor = config?.popup.flat_color ?? theme.colors.flat;
   const opacity = config?.appearance.popup_tint_opacity ?? 0.38;
   const softAlpha = Math.max(0.015, Math.min(0.16, opacity * 0.18));
-  const radius = config?.appearance.corner_radius ?? 14;
-  const upColor = config?.popup.up_color ?? '#C73E4E';
-  const downColor = config?.popup.down_color ?? '#5B8C5A';
-  const flatColor = config?.popup.flat_color ?? '#999999';
+  const userRadius = config?.appearance.corner_radius ?? 14;
+  const radius = theme.baseRadius + Math.max(0, userRadius - 14);
+  const fields = selectedFields(config, 'display_fields', DEFAULT_POPUP_FIELDS, QUOTE_FIELD_OPTIONS);
   const popupDensity = fields.length <= 3 ? 'compact' : fields.length <= 6 ? 'balanced' : 'detail';
   const metricBasis = fields.length <= 1 ? '100%' : fields.length === 2 ? 'calc((100% - 6px) / 2)' : 'calc((100% - 12px) / 3)';
 
@@ -308,6 +315,8 @@ function SettingsApp() {
     return new Map((summary?.items ?? []).map((item) => [item.code, item]));
   }, [summary]);
 
+  const { theme } = useTheme();
+
   async function handleAdd() {
     setMessage('');
     try {
@@ -453,9 +462,9 @@ function SettingsApp() {
     <main
       className="settings-shell"
       style={{
-        '--up-color': draft.popup.up_color || '#C73E4E',
-        '--down-color': draft.popup.down_color || '#5B8C5A',
-        '--flat-color': draft.popup.flat_color || '#999999'
+        '--up-color': draft.popup.up_color || theme.colors.up,
+        '--down-color': draft.popup.down_color || theme.colors.down,
+        '--flat-color': draft.popup.flat_color || theme.colors.flat,
       } as React.CSSProperties}
     >
       <header className="settings-title">
@@ -630,22 +639,13 @@ function SettingsApp() {
           </div>
           <div className="setting-block">
             <span>主题</span>
-            <div className="segmented">
-              {[
-                ['system', '跟随系统'],
-                ['dark', '深色'],
-                ['light', '浅色']
-              ].map(([value, label]) => (
-                <button
-                  className={draft.appearance.theme_mode === value ? 'active' : ''}
-                  key={value}
-                  onClick={() => setDraft(updateAppearance(draft, { theme_mode: value, theme: value === 'light' ? 'light' : 'dark' }))}
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <ThemeSelector
+              value={draft.appearance.theme_mode as ThemeMode}
+              onChange={(mode) => setDraft(updateAppearance(draft, {
+                theme_mode: mode,
+                theme: mode === 'light-terminal' ? 'light' : 'dark'
+              }))}
+            />
           </div>
           <label>
             <span>弹窗不透明度 {Math.round(draft.appearance.popup_tint_opacity * 100)}%</span>
@@ -871,7 +871,29 @@ function cloneConfig(config: AppConfig): AppConfig {
   return JSON.parse(JSON.stringify(config)) as AppConfig;
 }
 
+function isValidThemeMode(mode: unknown): mode is ThemeMode {
+  return mode === 'system' || mode === 'terminal-dark' || mode === 'light-terminal' || mode === 'liquid-glass';
+}
+
 function AppRouter() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>('system');
+
+  useEffect(() => {
+    getState()
+      .then((s) => {
+        const mode = s.config?.appearance?.theme_mode;
+        if (isValidThemeMode(mode)) setThemeMode(mode);
+      })
+      .catch(() => {});
+    const unlisten = onState((payload) => {
+      const mode = payload.config?.appearance?.theme_mode;
+      if (isValidThemeMode(mode)) setThemeMode(mode);
+    });
+    return () => {
+      unlisten.then((fn) => fn()).catch(console.error);
+    };
+  }, []);
+
   const page = useMemo(() => window.location.pathname.toLowerCase(), []);
   const route = useMemo(() => {
     const hashRoute = window.location.hash.replace(/^#\/?/, '').toLowerCase();
@@ -881,8 +903,12 @@ function AppRouter() {
     if (page.endsWith('/popup.html')) return 'popup';
     return 'settings';
   }, [page]);
-  if (route === 'popup') return <PopupApp />;
-  return <SettingsApp />;
+
+  return (
+    <ThemeProvider themeMode={themeMode}>
+      {route === 'popup' ? <PopupApp /> : <SettingsApp />}
+    </ThemeProvider>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
