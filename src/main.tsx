@@ -75,8 +75,27 @@ function selectedFields(config: AppConfig | undefined, source: 'display_fields' 
   return fields.length ? fields : fallback;
 }
 
+function useThemeMode(themeMode: string | undefined) {
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    function applyTheme() {
+      const resolved = themeMode === 'system'
+        ? (media.matches ? 'dark' : 'light')
+        : themeMode === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.style.colorScheme = resolved;
+    }
+
+    applyTheme();
+    media.addEventListener('change', applyTheme);
+    return () => media.removeEventListener('change', applyTheme);
+  }, [themeMode]);
+}
+
 function PopupApp() {
   const [state, setState] = useState<AppStatePayload | null>(null);
+  useThemeMode(state?.config.appearance.theme_mode);
 
   useEffect(() => {
     document.body.dataset.view = 'popup';
@@ -238,6 +257,7 @@ function SettingsApp() {
   const [costPrice, setCostPrice] = useState('');
   const [message, setMessage] = useState('');
   const [updating, setUpdating] = useState(false);
+  useThemeMode(draft?.appearance.theme_mode);
 
   useEffect(() => {
     document.body.dataset.view = 'settings';
