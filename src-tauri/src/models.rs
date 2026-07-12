@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub(crate) const CURRENT_CONFIG_SCHEMA_VERSION: u32 = 4;
+pub(crate) const CURRENT_CONFIG_SCHEMA_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AppConfig {
@@ -17,6 +17,8 @@ pub(crate) struct AppConfig {
     )]
     pub(crate) background_refresh_interval_ms: u32,
     #[serde(default)]
+    pub(crate) market_analysis: MarketAnalysisConfig,
+    #[serde(default)]
     pub(crate) popup: PopupConfig,
     #[serde(default)]
     pub(crate) appearance: AppearanceConfig,
@@ -24,6 +26,23 @@ pub(crate) struct AppConfig {
     pub(crate) display_fields: Vec<String>,
     #[serde(default = "default_tooltip_fields")]
     pub(crate) tooltip_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct MarketAnalysisConfig {
+    #[serde(default = "default_true")]
+    pub(crate) enabled: bool,
+    #[serde(default = "default_market_refresh_minutes")]
+    pub(crate) refresh_minutes: u32,
+}
+
+impl Default for MarketAnalysisConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            refresh_minutes: default_market_refresh_minutes(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +124,11 @@ pub(crate) struct StockData {
     pub(crate) change: f32,
     pub(crate) change_percent: f32,
     pub(crate) turnover: f32,
+    pub(crate) float_market_cap: f64,
+    pub(crate) upper_limit: f32,
+    pub(crate) lower_limit: f32,
+    pub(crate) listing_date: String,
+    pub(crate) source: String,
     pub(crate) date: String,
     pub(crate) time: String,
     pub(crate) error: String,
@@ -153,6 +177,138 @@ pub(crate) struct AppStatePayload {
     pub(crate) summary: Option<DailySummary>,
     pub(crate) last_refreshed_at: Option<String>,
     pub(crate) last_error: Option<String>,
+    pub(crate) market: MarketAnalysisState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct MarketAnalysisState {
+    pub(crate) current: Option<MarketSnapshot>,
+    pub(crate) history: Vec<MarketEvidence>,
+    pub(crate) last_error: Option<String>,
+    pub(crate) universe_size: usize,
+    pub(crate) sample_version: String,
+    pub(crate) algorithm_version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct MarketSnapshot {
+    pub(crate) trading_date: String,
+    pub(crate) time: String,
+    pub(crate) status: String,
+    pub(crate) leader: Option<String>,
+    pub(crate) leader_label: String,
+    pub(crate) signal_consistency: String,
+    #[serde(default)]
+    pub(crate) rotation_target: Option<String>,
+    #[serde(default)]
+    pub(crate) rotation_label: String,
+    #[serde(default)]
+    pub(crate) stability: f32,
+    pub(crate) quality: MarketDataQuality,
+    pub(crate) styles: Vec<StyleAnalysis>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct MarketEvidence {
+    pub(crate) time: String,
+    pub(crate) leader: Option<String>,
+    pub(crate) scores: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct MarketDataQuality {
+    pub(crate) expected: usize,
+    pub(crate) received: usize,
+    pub(crate) coverage: f32,
+    pub(crate) mode: String,
+    #[serde(default)]
+    pub(crate) sample_source: String,
+    #[serde(default)]
+    pub(crate) style_coverage: Vec<f32>,
+    #[serde(default)]
+    pub(crate) minimum_style_coverage: f32,
+    #[serde(default)]
+    pub(crate) raw_received: usize,
+    #[serde(default)]
+    pub(crate) excluded_st: usize,
+    #[serde(default)]
+    pub(crate) excluded_new: usize,
+    #[serde(default)]
+    pub(crate) excluded_halted: usize,
+    #[serde(default)]
+    pub(crate) timestamp_missing: usize,
+    #[serde(default)]
+    pub(crate) delayed_count: usize,
+    #[serde(default)]
+    pub(crate) index_expected: usize,
+    #[serde(default)]
+    pub(crate) index_received: usize,
+    #[serde(default)]
+    pub(crate) broad_index_received: usize,
+    #[serde(default)]
+    pub(crate) style_index_coverage: Vec<f32>,
+    #[serde(default)]
+    pub(crate) index_error: String,
+    pub(crate) primary_count: usize,
+    pub(crate) fallback_count: usize,
+    pub(crate) stale_count: usize,
+    pub(crate) updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct StyleAnalysis {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) subtitle: String,
+    pub(crate) score: f32,
+    pub(crate) heat: f32,
+    pub(crate) preference: f32,
+    #[serde(default)]
+    pub(crate) state: String,
+    #[serde(default)]
+    pub(crate) score_change: f32,
+    pub(crate) relative_return: f32,
+    pub(crate) breadth: f32,
+    pub(crate) activity: f32,
+    pub(crate) confirmation: f32,
+    pub(crate) consistency: f32,
+    pub(crate) concentration: f32,
+    #[serde(default)]
+    pub(crate) entropy: f32,
+    #[serde(default)]
+    pub(crate) diffusion: f32,
+    #[serde(default)]
+    pub(crate) direction: String,
+    #[serde(default)]
+    pub(crate) directional_share: f32,
+    #[serde(default)]
+    pub(crate) equal_weight_return: f32,
+    #[serde(default)]
+    pub(crate) cap_weight_return: f32,
+    #[serde(default)]
+    pub(crate) weighting_divergence: f32,
+    pub(crate) subsectors: Vec<SubsectorAnalysis>,
+    pub(crate) positive: Vec<MarketContribution>,
+    pub(crate) negative: Vec<MarketContribution>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct SubsectorAnalysis {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) contribution: f32,
+    pub(crate) breadth: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct MarketContribution {
+    pub(crate) code: String,
+    pub(crate) name: String,
+    pub(crate) subsector: String,
+    pub(crate) contribution: f32,
+    pub(crate) change_percent: f32,
+    #[serde(default)]
+    pub(crate) reason: String,
 }
 
 pub(crate) fn default_config_schema_version() -> u32 {
@@ -188,6 +344,10 @@ pub(crate) fn default_true() -> bool {
 
 pub(crate) fn default_background_refresh_interval_ms() -> u32 {
     10_000
+}
+
+pub(crate) fn default_market_refresh_minutes() -> u32 {
+    15
 }
 
 pub(crate) fn default_display_fields() -> Vec<String> {

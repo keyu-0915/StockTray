@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { AppConfig, AppStatePayload, DailySummary, UpdateCheckResult } from './types';
+import type { AppConfig, AppStatePayload, DailySummary, MarketSnapshot, UpdateCheckResult } from './types';
 
 export async function getState(): Promise<AppStatePayload> {
   return invoke<AppStatePayload>('get_state');
@@ -8,6 +8,10 @@ export async function getState(): Promise<AppStatePayload> {
 
 export async function refreshQuotes(): Promise<DailySummary> {
   return invoke<DailySummary>('refresh_quotes');
+}
+
+export async function refreshMarketAnalysis(): Promise<MarketSnapshot> {
+  return invoke<MarketSnapshot>('refresh_market_analysis');
 }
 
 export async function checkAndInstallUpdate(): Promise<UpdateCheckResult> {
@@ -34,4 +38,20 @@ export function onState(callback: (state: AppStatePayload) => void) {
   return listen<AppStatePayload | null>('stocktray-state', (event) => {
     if (event.payload) callback(event.payload);
   });
+}
+
+export function startWindowDragging() {
+  return invoke<void>('control_settings_window', { action: 'drag' });
+}
+
+export function minimizeWindow() {
+  return invoke<void>('control_settings_window', { action: 'minimize' });
+}
+
+export function toggleMaximizeWindow() {
+  return invoke<void>('control_settings_window', { action: 'toggle-maximize' });
+}
+
+export function closeWindow() {
+  return invoke<void>('control_settings_window', { action: 'close' });
 }

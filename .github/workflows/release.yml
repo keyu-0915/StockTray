@@ -27,6 +27,18 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Verify release metadata and website version
+        shell: pwsh
+        run: ./scripts/check-version-sync.ps1
+
+      - name: Verify frontend and Rust quality gates
+        shell: pwsh
+        run: |
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo test --manifest-path src-tauri/Cargo.toml --all-features
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
       - name: Build and publish Tauri release
         uses: tauri-apps/tauri-action@v0
         env:

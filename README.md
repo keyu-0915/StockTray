@@ -113,7 +113,7 @@ npm run release
 releases/韭菜托盘_<version>_x64-setup.exe
 ```
 
-当前最新版本：`0.2.16`
+当前最新版本：`0.2.17`
 
 ## 项目结构
 

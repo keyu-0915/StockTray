@@ -122,9 +122,15 @@ function renderIcon(targetSize) {
   const high = targetSize * sample;
   const scale = high / 256;
   const data = Buffer.alloc(high * high * 4);
-  const mark = [[42, 178], [94, 126], [130, 150], [214, 66]];
-  drawPolyline(data, high, scale, mark, 44, [35, 185, 238], 0.96);
-  drawPolyline(data, high, scale, mark, 26, [248, 251, 255], 1);
+  for (let y = 0; y < high; y += 1) {
+    for (let x = 0; x < high; x += 1) {
+      const distance = roundedRectDistance((x + .5) / scale, (y + .5) / scale, 18, 18, 220, 220, 48);
+      blendPixel(data, (y * high + x) * 4, [26, 105, 224], Math.max(0, Math.min(1, .7 - distance)));
+    }
+  }
+  drawPolyline(data, high, scale, [[105, 76], [55, 76], [55, 126], [105, 126], [105, 180], [50, 180]], 22, [248, 251, 255]);
+  drawCapsule(data, high, scale, 126, 76, 205, 76, 22, [248, 251, 255], 1);
+  drawCapsule(data, high, scale, 166, 76, 166, 180, 22, [248, 251, 255], 1);
 
   const out = Buffer.alloc(targetSize * targetSize * 4);
   for (let y = 0; y < targetSize; y += 1) {

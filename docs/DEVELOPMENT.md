@@ -69,8 +69,18 @@ cargo check --manifest-path src-tauri/Cargo.toml
 - `src-tauri/Cargo.lock`
 - `src-tauri/tauri.conf.json`
 - `RELEASES.md`
+- `README.md` 中的当前版本
+- `docs/index.html` 中的官网版本、下载文件名和更新日志
 
 版本记录写在 `RELEASES.md`，保留 `Unreleased` 区块。
+
+运行版本一致性检查：
+
+```powershell
+./scripts/check-version-sync.ps1
+```
+
+本地打包与 GitHub Release 工作流都会自动执行此检查，避免客户端已经发布而官网仍停留在旧版本。
 
 ## 打包
 
@@ -92,6 +102,15 @@ src-tauri/target/release/bundle/nsis/
 
 这些构建产物不提交到 Git。
 
+## 新版本发布顺序
+
+1. UI 定稿后更新官网功能文案、风险说明和真实截图。
+2. 同步应用版本、`README.md`、`RELEASES.md` 与 `docs/index.html`。
+3. 运行 `./scripts/check-version-sync.ps1` 和 `npm run release`。
+4. 将同一个发布提交推送到 `main`，确认 GitHub Pages 部署成功。
+5. 在该提交创建并推送 `v<version>` 标签，确认 GitHub Release、安装包和 `latest.json` 均已生成。
+6. 从官网实际点击下载与更新入口，并在已安装旧版本中执行一次手动升级验收；两条流水线都成功后再对外宣布。
+
 ## 手动测试清单
 
 每次 UI 或刷新逻辑变更后，至少检查：
@@ -106,6 +125,8 @@ src-tauri/target/release/bundle/nsis/
 - 后台刷新间隔可配置；前台窗口可见时每秒刷新。
 - 托盘 tooltip 只显示选中的一只股票，文本不使用复杂 UI。
 - 高 DPI 或多显示器下弹窗位置基本正确。
+- 官网的版本号、下载入口、更新日志和新版截图与客户端一致。
+- 推送 `docs/**` 后，GitHub Pages 工作流部署成功，桌面与手机宽度下主要链接均可访问。
 
 ## 常见问题
 

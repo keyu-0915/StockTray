@@ -1,5 +1,12 @@
 # StockTray Releases
 
+## 0.2.17 - Market style and UI refresh
+
+- Added independent young, middle, and old market-style scoring with contribution breakdowns and intraday evidence.
+- Added animated sliding selections, five visual themes, a two-column minimum-width layout, and refined list alignment.
+- Added three non-persistent mock market scenarios, an expanded About section, and a coffee support dialog.
+- Replaced the Windows application icon with the new ST lettermark and improved watchlist drag ordering.
+
 ## 0.2.16 - Manual updater and precision
 
 - Renamed the user-facing app name to `韭菜托盘` while keeping internal package identifiers stable as StockTray.

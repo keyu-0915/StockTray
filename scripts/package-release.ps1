@@ -3,6 +3,8 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $root
 
+& (Join-Path $PSScriptRoot "check-version-sync.ps1")
+
 $package = Get-Content "package.json" -Raw -Encoding UTF8 | ConvertFrom-Json
 $version = $package.version
 $tauriConfig = Get-Content "src-tauri\tauri.conf.json" -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -41,8 +43,8 @@ function Invoke-Checked {
 Invoke-Checked npm run build
 Invoke-Checked $cargo fmt --manifest-path "src-tauri\Cargo.toml" --check
 Invoke-Checked $cargo check --manifest-path "src-tauri\Cargo.toml"
-Invoke-Checked $cargo test --manifest-path "src-tauri\Cargo.toml"
-Invoke-Checked $cargo clippy --manifest-path "src-tauri\Cargo.toml" "--" "-D" "warnings"
+Invoke-Checked $cargo test --manifest-path "src-tauri\Cargo.toml" --all-features
+Invoke-Checked $cargo clippy --manifest-path "src-tauri\Cargo.toml" --all-targets --all-features "--" "-D" "warnings"
 Invoke-Checked npm run tauri:build
 
 $expectedInstaller = Join-Path $root "src-tauri\target\release\bundle\nsis\${productName}_${version}_x64-setup.exe"

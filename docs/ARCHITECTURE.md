@@ -95,3 +95,9 @@ releases/韭菜托盘_<version>_x64-setup.exe
 ```
 
 如果后续需要 portable zip，可以在 `scripts/package-release.ps1` 中扩展复制 `src-tauri/target/release/stocktray.exe` 及运行资源的逻辑。
+
+## 官网与发布
+
+官网是仓库 `docs/` 目录中的静态 HTML/CSS，由 `.github/workflows/pages.yml` 在 `main` 分支的官网文件变更后部署到 GitHub Pages。它不参与客户端运行，也不增加客户端 CPU 或内存占用。
+
+发布标签触发 `.github/workflows/release.yml` 构建 Windows 安装包和更新清单。发布前由 `scripts/check-version-sync.ps1` 校验应用、README、版本记录和官网版本一致；新版功能文案与截图应在 UI 定稿后随同一个发布提交更新。
