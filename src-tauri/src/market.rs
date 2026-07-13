@@ -157,7 +157,8 @@ impl MarketEngine {
                 self.universe_source = "online_exact".into();
                 members
             }
-            Err(_) => {
+            Err(error) => {
+                eprintln!("market universe fallback: {error}");
                 self.universe_source = "offline_proxy".into();
                 embedded_universe()?
             }
@@ -435,6 +436,7 @@ impl MarketEngine {
         let mut ranked = styles.iter().collect::<Vec<_>>();
         ranked.sort_by(|a, b| b.preference.total_cmp(&a.preference));
         let candidate = ranked.first().map(|style| style.id.clone());
+        let candidate_label = candidate.as_deref().map(style_label).unwrap_or("-");
         let gap = ranked
             .first()
             .zip(ranked.get(1))
@@ -481,10 +483,14 @@ impl MarketEngine {
             self.pending_leader = None;
             self.pending_count = 0;
             ("co_strong".to_string(), None)
-        } else if gap < LEADER_GAP || !candidate_is_strong {
+        } else if gap < LEADER_GAP {
             self.pending_leader = None;
             self.pending_count = 0;
             ("balanced".to_string(), None)
+        } else if !candidate_is_strong {
+            self.pending_leader = None;
+            self.pending_count = 0;
+            ("relative".to_string(), None)
         } else {
             let candidate = candidate.unwrap_or_default();
             if self.pending_leader.as_deref() == Some(&candidate) {
@@ -515,16 +521,17 @@ impl MarketEngine {
         let leader_label = leader
             .as_deref()
             .map(style_label)
+            .map(str::to_string)
             .unwrap_or_else(|| match status.as_str() {
-                "balanced" => "均衡",
-                "all_weak" => "整体偏弱",
-                "broad_risk_on" => "多线共强",
-                "co_strong" => "双线共强",
-                "observing" => "观察中",
-                "no_conclusion" => "暂无结论",
-                _ => "形成中",
-            })
-            .to_string();
+                "relative" => format!("{candidate_label}相对占优"),
+                "balanced" => "多线均衡".into(),
+                "all_weak" => "整体偏弱".into(),
+                "broad_risk_on" => "多线共强".into(),
+                "co_strong" => "双线共强".into(),
+                "observing" => "观察中".into(),
+                "no_conclusion" => "暂无结论".into(),
+                _ => "形成中".into(),
+            });
         let consistency = leader
             .as_deref()
             .and_then(|id| styles.iter().find(|style| style.id == id))
@@ -655,12 +662,17 @@ struct MemberMetric {
 }
 
 async fn resolve_universe() -> Result<Vec<SampleMember>, String> {
-    let mut groups = Vec::new();
+    let mut tasks = tokio::task::JoinSet::new();
     for spec in BOARDS {
-        let members = fetch_board_members(spec.board)
-            .await
-            .map_err(|error| format!("{}: {error}", spec.subsector))?;
-        groups.push((spec, members));
+        tasks.spawn(async move { (spec, fetch_board_members(spec.board).await) });
+    }
+    let mut groups = Vec::new();
+    while let Some(result) = tasks.join_next().await {
+        let (spec, members) = result.map_err(|error| error.to_string())?;
+        groups.push((
+            spec,
+            members.map_err(|error| format!("{}: {error}", spec.subsector))?,
+        ));
     }
     let members = build_stratified_universe(groups, MAX_PER_STYLE);
     valid_universe(&members)

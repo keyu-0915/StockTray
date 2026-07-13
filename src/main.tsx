@@ -291,13 +291,12 @@ function PopupApp() {
             </div>
             <span>{market ? `覆盖 ${market.quality.coverage.toFixed(0)}%` : "暂无快照"}</span>
           </header>
-          <div className="popup-style-scores">
+          <div className="popup-style-inline">
             {market?.styles.map((style) => (
-              <div className={`${style.id} ${market.leader === style.id ? "active" : ""}`} key={style.id}>
-                <span>{style.label}</span>
+              <span className={`${style.id} ${market.leader === style.id ? "active" : ""}`} key={style.id}>
+                {style.label}
                 <b>{style.score.toFixed(0)}</b>
-                <Progress value={style.score} />
-              </div>
+              </span>
             )) ?? <small>首次有效行情后显示风格判断</small>}
           </div>
         </div>
@@ -907,6 +906,8 @@ function MarketPage({ state }: { state: AppStatePayload }) {
               ? "当前主导"
               : market.status === "proxy"
                 ? "代理样本倾向"
+                : market.status === "relative"
+                  ? "相对占优 · 尚未形成主线"
                 : "当前状态"}
           </span>
           <h1>{market.leader_label}</h1>
@@ -945,7 +946,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
         <section className="panel">
           <SectionTitle
             title="贡献拆解"
-            detail={focusedStyle ? `${focusedStyle.label} → ${focusedStyle.subtitle}` : ""}
+            detail={focusedStyle ? `${focusedStyle.label} → ${focusedStyle.subtitle}${market.quality.sample_source === "offline_proxy" ? " · 当前为离线替代样本" : ""}` : ""}
           />
           {focusedStyle && (
             <div className="style-metrics">
@@ -966,7 +967,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
           {focusedStyle?.subsectors.map((subsector) => (
             <div className="subsector-row" key={subsector.id}>
               <div>
-                <b>{subsector.name}</b>
+                <b>{subsectorLabel(subsector.name, market.quality.sample_source === "offline_proxy")}</b>
                 <small>上涨广度 {subsector.breadth.toFixed(0)}%</small>
               </div>
               <Progress
@@ -987,6 +988,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
                 <ContributionRow
                   item={item}
                   key={`p-${item.code}-${item.subsector}`}
+                  proxy={market.quality.sample_source === "offline_proxy"}
                 />
               ))}
             </div>
@@ -996,6 +998,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
                 <ContributionRow
                   item={item}
                   key={`n-${item.code}-${item.subsector}`}
+                  proxy={market.quality.sample_source === "offline_proxy"}
                 />
               ))}
             </div>
@@ -1467,17 +1470,20 @@ function EmptyMarket() {
 function ContributionRow({
   item,
   prefix,
+  proxy = false,
 }: {
   item: MarketContribution;
   prefix?: string;
+  proxy?: boolean;
 }) {
+  const subsector = subsectorLabel(item.subsector, proxy);
   return (
     <div className="contribution-row">
       <div>
         <b>{item.name || item.code}</b>
-        <small title={`${prefix ? `${prefix} · ` : ""}${item.subsector} · ${item.reason}`}>
+        <small title={`${prefix ? `${prefix} · ` : ""}${subsector} · ${item.reason}`}>
           {prefix ? `${prefix} · ` : ""}
-          {item.subsector} · {item.reason}
+          {subsector} · {item.reason}
         </small>
       </div>
       <span className={tone(item.contribution)}>
@@ -1488,6 +1494,17 @@ function ContributionRow({
       </em>
     </div>
   );
+}
+function subsectorLabel(name: string, proxy: boolean) {
+  if (!proxy) return name;
+  return ({
+    "电子代理": "AI硬件（电子样本）",
+    "通信代理": "光通信（通信样本）",
+    "计算机代理": "算力基础设施（计算机样本）",
+    "机械设备代理": "机器人（机械设备样本）",
+    "传媒代理": "游戏（传媒样本）",
+    "国防军工代理": "商业航天（军工样本）",
+  } as Record<string, string>)[name] ?? name;
 }
 function styleLabel(id: string) {
   return id === "young" ? "小登" : id === "middle" ? "中登" : "老登";

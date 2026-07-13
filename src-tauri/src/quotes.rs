@@ -143,8 +143,13 @@ async fn fetch_board_page(
     page: usize,
 ) -> Result<(Vec<BoardMember>, usize), String> {
     let mut last_error = String::new();
-    for host in ["29", "17"] {
-        let url = format!("https://{host}.push2.eastmoney.com/api/qt/clist/get?pn={page}&pz={BOARD_PAGE_SIZE}&po=0&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=b:{board}%20f:!50&fields=f12,f13,f14&_={}", chrono::Utc::now().timestamp_millis());
+    for base in [
+        "http://80.push2.eastmoney.com",
+        "http://82.push2.eastmoney.com",
+        "http://17.push2.eastmoney.com",
+        "http://29.push2.eastmoney.com",
+    ] {
+        let url = format!("{base}/api/qt/clist/get?pn={page}&pz={BOARD_PAGE_SIZE}&po=0&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=b:{board}&fields=f12,f13,f14&_={}", chrono::Utc::now().timestamp_millis());
         match client.get(url).send().await {
             Ok(result) => match result.json::<serde_json::Value>().await {
                 Ok(json) => match parse_board_page(&json) {
@@ -167,6 +172,9 @@ fn parse_board_page(json: &serde_json::Value) -> Result<(Vec<BoardMember>, usize
         .iter()
         .filter_map(|item| {
             let number = item["f12"].as_str()?;
+            if !matches!(number.as_bytes().first(), Some(b'0' | b'3' | b'6')) {
+                return None;
+            }
             let market = item["f13"].as_i64()?;
             let prefix = if market == 1 { "sh" } else { "sz" };
             Some(BoardMember {

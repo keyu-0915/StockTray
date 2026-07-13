@@ -1,5 +1,12 @@
 # StockTray Releases
 
+## 0.2.18 - Precise market samples and compact popup
+
+- Replaced offline industry proxies with cached exact concept-board constituents when the online source is available.
+- Added concurrent constituent loading and resilient data-source endpoints to avoid initialization timeouts.
+- Distinguished relative style leadership from true balance and confirmed dominance.
+- Made the tray popup more compact and clarified fallback sample labels in contribution breakdowns.
+
 ## 0.2.17 - Market style and UI refresh
 
 - Added independent young, middle, and old market-style scoring with contribution breakdowns and intraday evidence.
