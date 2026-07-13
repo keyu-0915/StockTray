@@ -173,32 +173,15 @@ fn popup_dimensions(payload: Option<&AppStatePayload>) -> (u32, u32) {
         })
         .unwrap_or(false);
     let has_market_card = payload.is_some();
-    let compact = field_count <= 3;
-    let balanced = field_count <= 6;
-    let width = if visible_rows == 1 {
-        if compact {
-            560
-        } else {
-            640
-        }
-    } else if compact {
-        860
-    } else {
-        820
-    };
+    let width = 460;
     let metric_rows = (field_count as u32).div_ceil(3).max(1);
     let row_height = (20 + metric_rows * 34 + metric_rows.saturating_sub(1) * 10).max(68);
-    let cards_per_row = if compact || balanced { 2 } else { 1 };
-    let row_groups = if cards_per_row > 1 {
-        (visible_rows as u32).div_ceil(cards_per_row).clamp(1, 5)
-    } else {
-        (visible_rows as u32).clamp(1, 5)
-    };
-    let height = (56
+    let row_groups = (visible_rows as u32).clamp(1, 2);
+    let height = (30
         + row_groups * row_height
-        + if has_summary { 46 } else { 0 }
-        + if has_market_card { 84 } else { 0 })
-    .clamp(140, 780);
+        + if has_summary { 40 } else { 0 }
+        + if has_market_card { 74 } else { 0 })
+    .clamp(140, 560);
     (width, height)
 }
 
@@ -290,11 +273,11 @@ mod tests {
             last_error: None,
             market: MarketAnalysisState::default(),
         };
-        assert_eq!(popup_dimensions(Some(&payload)), (820, 780));
+        assert_eq!(popup_dimensions(Some(&payload)), (460, 428));
         let mut single = payload.clone();
         single.config.display_fields.truncate(3);
         single.summary.as_mut().unwrap().items.truncate(1);
-        assert_eq!(popup_dimensions(Some(&single)), (560, 254));
-        assert_eq!(popup_dimensions(None), (820, 252));
+        assert_eq!(popup_dimensions(Some(&single)), (460, 212));
+        assert_eq!(popup_dimensions(None), (460, 226));
     }
 }
