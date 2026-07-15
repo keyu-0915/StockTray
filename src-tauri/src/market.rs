@@ -11,8 +11,8 @@ use crate::{
     quotes::{fetch_board_members, QuoteFetchResult},
 };
 
-pub(crate) const SAMPLE_VERSION: &str = "2026.07-v3";
-pub(crate) const ALGORITHM_VERSION: &str = "2.0.1";
+pub(crate) const SAMPLE_VERSION: &str = "2026.07-v4";
+pub(crate) const ALGORITHM_VERSION: &str = "2.2.0";
 const MIN_UNIVERSE: usize = 450;
 const MAX_UNIVERSE: usize = 550;
 const MIN_PER_STYLE: usize = 120;
@@ -21,6 +21,11 @@ const MIN_COVERAGE: f32 = 80.0;
 const LEADER_GAP: f32 = 8.0;
 const STRONG_SCORE: f32 = 60.0;
 const WEAK_SCORE: f32 = 40.0;
+const MIN_FLOAT_CAP_COVERAGE: f32 = 95.0;
+const MAX_STOCK_WEIGHT: f64 = 0.10;
+const MAX_TOP_FIVE_WEIGHT: f64 = 0.40;
+const UNIVERSE_REFRESH_DAYS: i64 = 7;
+const INDEX_CACHE_MAX_MINUTES: f32 = 10.0;
 
 #[derive(Debug, Clone)]
 struct BoardSpec {
@@ -135,7 +140,12 @@ pub(crate) struct SampleMember {
 pub(crate) struct MarketEngine {
     pub(crate) members: Vec<SampleMember>,
     universe_source: String,
+    universe_refreshed_on: String,
     last_amounts: HashMap<String, f64>,
+    base_float_caps: HashMap<String, f64>,
+    last_sample_time: String,
+    last_index_quotes: Vec<StockData>,
+    last_index_time: String,
     last_trading_date: String,
     pending_leader: Option<String>,
     pending_count: u8,
@@ -146,15 +156,17 @@ impl MarketEngine {
         if !self.members.is_empty() {
             return Ok(());
         }
-        if let Some(members) = load_cached_universe() {
-            self.members = members;
+        if let Some(cache) = load_cached_universe() {
+            self.members = cache.members;
             self.universe_source = "cache_exact".into();
+            self.universe_refreshed_on = cache.refreshed_on;
             return Ok(());
         }
         self.members = match resolve_universe().await {
             Ok(members) => {
                 save_cached_universe(&members);
                 self.universe_source = "online_exact".into();
+                self.universe_refreshed_on = Local::now().format("%Y-%m-%d").to_string();
                 members
             }
             Err(error) => {
@@ -164,6 +176,39 @@ impl MarketEngine {
             }
         };
         Ok(())
+    }
+
+    pub(crate) async fn refresh_universe_if_due(&mut self) -> Result<bool, String> {
+        let now = Local::now();
+        let today = now.date_naive();
+        let stale = NaiveDate::parse_from_str(&self.universe_refreshed_on, "%Y-%m-%d")
+            .map(|refreshed| (today - refreshed).num_days() >= UNIVERSE_REFRESH_DAYS)
+            .unwrap_or(true);
+        if !stale || analysis_phase(&now.format("%H:%M:%S").to_string()) != "auction_final" {
+            return Ok(false);
+        }
+        let members = resolve_universe().await?;
+        let changed =
+            serde_json::to_string(&members).ok() != serde_json::to_string(&self.members).ok();
+        save_cached_universe(&members);
+        self.members = members;
+        self.universe_source = "online_exact".into();
+        self.universe_refreshed_on = today.format("%Y-%m-%d").to_string();
+        if changed {
+            self.reset_intraday();
+        }
+        Ok(changed)
+    }
+
+    pub(crate) fn reset_intraday(&mut self) {
+        self.last_amounts.clear();
+        self.base_float_caps.clear();
+        self.last_sample_time.clear();
+        self.last_index_quotes.clear();
+        self.last_index_time.clear();
+        self.last_trading_date.clear();
+        self.pending_leader = None;
+        self.pending_count = 0;
     }
 
     pub(crate) fn codes(&self) -> Vec<String> {
@@ -208,13 +253,14 @@ impl MarketEngine {
 
     fn analyze_at_date(
         &mut self,
-        fetched: QuoteFetchResult,
+        mut fetched: QuoteFetchResult,
         previous: Option<&MarketSnapshot>,
         now_date: &str,
         now_time: &str,
         refresh_minutes: u32,
         enforce_index_quality: bool,
     ) -> MarketSnapshot {
+        let phase = analysis_phase(now_time);
         let expected = self.members.len();
         let all_quotes = fetched
             .quotes
@@ -252,21 +298,23 @@ impl MarketEngine {
         let mut excluded_halted = 0;
         let quotes = raw_quotes
             .iter()
-            .filter(|(_, quote)| match exclusion_reason(quote, &trading_date) {
-                Some("st") => {
-                    excluded_st += 1;
-                    false
-                }
-                Some("new") => {
-                    excluded_new += 1;
-                    false
-                }
-                Some("halted") => {
-                    excluded_halted += 1;
-                    false
-                }
-                _ => true,
-            })
+            .filter(
+                |(_, quote)| match exclusion_reason(quote, &trading_date, phase) {
+                    Some("st") => {
+                        excluded_st += 1;
+                        false
+                    }
+                    Some("new") => {
+                        excluded_new += 1;
+                        false
+                    }
+                    Some("halted") => {
+                        excluded_halted += 1;
+                        false
+                    }
+                    _ => true,
+                },
+            )
             .map(|(code, quote)| (code.clone(), quote.clone()))
             .collect::<HashMap<_, _>>();
         let received = quotes.len();
@@ -301,9 +349,21 @@ impl MarketEngine {
         let minimum_style_coverage = style_coverage.iter().copied().fold(100.0, f32::min);
         if self.last_trading_date != trading_date {
             self.last_amounts.clear();
+            self.base_float_caps.clear();
+            self.last_sample_time.clear();
+            self.last_index_quotes.clear();
+            self.last_index_time.clear();
             self.pending_leader = None;
             self.pending_count = 0;
             self.last_trading_date = trading_date.clone();
+        }
+        for quote in quotes.values() {
+            let base_cap = previous_close_float_cap(quote);
+            if base_cap > 0.0 {
+                self.base_float_caps
+                    .entry(quote.code.clone())
+                    .or_insert(base_cap);
+            }
         }
         let previous = previous.filter(|snapshot| {
             snapshot.trading_date == trading_date
@@ -313,6 +373,46 @@ impl MarketEngine {
             .values()
             .filter(|quote| quote.date != trading_date)
             .count();
+        let fresh_index_count = fetched
+            .index_quotes
+            .iter()
+            .filter(|quote| {
+                quote.error.is_empty()
+                    && quote.price > 0.0
+                    && quote.prev_close > 0.0
+                    && quote.date == trading_date
+                    && !quote.time.is_empty()
+            })
+            .count();
+        let fresh_index_available = fresh_index_count > 0;
+        let recent_index_cache = !self.last_index_quotes.is_empty()
+            && self
+                .last_index_quotes
+                .iter()
+                .all(|quote| quote.date == trading_date)
+            && trading_minutes_between(&self.last_index_time, data_time)
+                .is_some_and(|minutes| minutes <= INDEX_CACHE_MAX_MINUTES);
+        let mut index_cached = false;
+        if fresh_index_available
+            && fresh_index_count < BOARDS.len() + BROAD_INDICES.len()
+            && recent_index_cache
+            && self.last_index_quotes.len() > fresh_index_count
+        {
+            fetched.index_quotes = self.last_index_quotes.clone();
+            index_cached = true;
+        } else if fresh_index_available {
+            self.last_index_time = fetched
+                .index_quotes
+                .iter()
+                .map(|quote| quote.time.as_str())
+                .max()
+                .unwrap_or_default()
+                .into();
+            self.last_index_quotes = fetched.index_quotes.clone();
+        } else if recent_index_cache {
+            fetched.index_quotes = self.last_index_quotes.clone();
+            index_cached = true;
+        }
         let index_timestamp_missing = fetched
             .index_quotes
             .iter()
@@ -371,17 +471,28 @@ impl MarketEngine {
             .collect::<Vec<_>>();
         let minimum_index_style_coverage =
             style_index_coverage.iter().copied().fold(100.0, f32::min);
-        let index_evidence_ok = !enforce_index_quality
-            || (fetched.index_error.is_empty()
-                && index_timestamp_missing == 0
-                && index_stale_count == 0
-                && broad_index_received >= 3
-                && minimum_index_style_coverage >= 60.0);
-        let quality = MarketDataQuality {
+        let independent_index_ok = (fetched.index_error.is_empty() || index_cached)
+            && index_timestamp_missing == 0
+            && index_stale_count == 0
+            && broad_index_received >= 3
+            && minimum_index_style_coverage >= 60.0;
+        let index_derived = enforce_index_quality
+            && !independent_index_ok
+            && expected >= MIN_UNIVERSE
+            && coverage >= 95.0
+            && minimum_style_coverage >= 95.0
+            && timestamp_missing == 0
+            && stale_count == 0;
+        let index_evidence_ok = !enforce_index_quality || independent_index_ok || index_derived;
+        let mut quality = MarketDataQuality {
             expected,
             received,
             coverage,
-            mode: if fetched.fallback_count > 0 {
+            mode: if index_derived {
+                "derived_index"
+            } else if index_cached {
+                "cached_index"
+            } else if fetched.fallback_count > 0 {
                 "fallback"
             } else {
                 "full"
@@ -399,21 +510,29 @@ impl MarketEngine {
             index_expected,
             index_received,
             broad_index_received,
+            index_cached,
+            index_derived,
             style_index_coverage,
             index_error: fetched.index_error.clone(),
             primary_count: fetched.primary_count,
             fallback_count: fetched.fallback_count,
             stale_count: stale_count + index_stale_count,
             updated_at: data_time.into(),
+            conclusion_ready: false,
         };
 
+        let activity_minutes = matches!(phase, "opening_observation" | "continuous")
+            .then(|| trading_minutes_between(&self.last_sample_time, data_time))
+            .flatten()
+            .filter(|minutes| *minutes >= 1.0);
         let index_signals = style_index_signals(&valid_index_quotes);
         let market_return = broad_index_return(&valid_index_quotes, data_time);
         let metrics = build_metrics(
             &self.members,
             &quotes,
             &self.last_amounts,
-            data_time,
+            &self.base_float_caps,
+            activity_minutes,
             market_return,
         );
         let mut styles = ["young", "middle", "old"]
@@ -424,15 +543,13 @@ impl MarketEngine {
                     &metrics,
                     previous,
                     index_signals.get(style).copied().unwrap_or(0.0),
+                    data_time,
                 )
             })
             .collect::<Vec<_>>();
         styles.sort_by_key(|style| style_order(&style.id));
         let (rotation_target, rotation_label, stability) = rotation_summary(&styles, previous);
 
-        let observing = parse_time(now_time)
-            .map(|time| time < NaiveTime::from_hms_opt(9, 45, 0).unwrap())
-            .unwrap_or(false);
         let mut ranked = styles.iter().collect::<Vec<_>>();
         ranked.sort_by(|a, b| b.preference.total_cmp(&a.preference));
         let candidate = ranked.first().map(|style| style.id.clone());
@@ -453,20 +570,29 @@ impl MarketEngine {
         let candidate_is_strong = ranked
             .first()
             .is_some_and(|style| style.score >= STRONG_SCORE);
+        let cap_quality_ok = styles
+            .iter()
+            .all(|style| style.float_cap_coverage >= MIN_FLOAT_CAP_COVERAGE);
         let quality_ok = coverage >= MIN_COVERAGE
             && quality.minimum_style_coverage >= MIN_COVERAGE
             && quality.timestamp_missing == 0
             && quality.delayed_count == 0
             && quality.stale_count == 0
             && index_evidence_ok
+            && cap_quality_ok
             && expected > 0;
+        quality.conclusion_ready = quality_ok;
         let proxy_sample = quality.sample_source == "offline_proxy";
 
         let (status, leader) = if !quality_ok {
             self.pending_leader = None;
             self.pending_count = 0;
             ("no_conclusion".to_string(), None)
-        } else if observing {
+        } else if phase == "auction_final" {
+            self.pending_leader = None;
+            self.pending_count = 0;
+            ("auction".to_string(), None)
+        } else if phase != "continuous" {
             (
                 "observing".to_string(),
                 previous.and_then(|snapshot| snapshot.leader.clone()),
@@ -503,7 +629,14 @@ impl MarketEngine {
                 || self.pending_count >= 2
             {
                 (
-                    if proxy_sample { "proxy" } else { "dominant" }.to_string(),
+                    if proxy_sample {
+                        "proxy"
+                    } else if quality.index_derived {
+                        "derived"
+                    } else {
+                        "dominant"
+                    }
+                    .to_string(),
                     Some(candidate),
                 )
             } else {
@@ -514,9 +647,12 @@ impl MarketEngine {
             }
         };
 
-        for quote in quotes.values() {
-            self.last_amounts
-                .insert(quote.code.clone(), quote.amount.max(0.0) as f64);
+        if matches!(phase, "opening_observation" | "continuous") {
+            for quote in quotes.values() {
+                self.last_amounts
+                    .insert(quote.code.clone(), quote.amount.max(0.0) as f64);
+            }
+            self.last_sample_time = data_time.into();
         }
         let leader_label = leader
             .as_deref()
@@ -528,6 +664,8 @@ impl MarketEngine {
                 "all_weak" => "整体偏弱".into(),
                 "broad_risk_on" => "多线共强".into(),
                 "co_strong" => "双线共强".into(),
+                "auction" => format!("竞价倾向：{candidate_label}"),
+                "derived" => format!("成分推断：{candidate_label}"),
                 "observing" => "观察中".into(),
                 "no_conclusion" => "暂无结论".into(),
                 _ => "形成中".into(),
@@ -550,6 +688,7 @@ impl MarketEngine {
         MarketSnapshot {
             trading_date,
             time: data_time.into(),
+            phase: phase.into(),
             status,
             leader,
             leader_label,
@@ -566,6 +705,8 @@ impl MarketEngine {
 #[derive(Serialize, Deserialize)]
 struct UniverseCache {
     sample_version: String,
+    #[serde(default)]
+    refreshed_on: String,
     members: Vec<SampleMember>,
 }
 
@@ -573,12 +714,11 @@ fn universe_cache_path() -> std::path::PathBuf {
     crate::config::config_path().with_file_name("market-universe.json")
 }
 
-fn load_cached_universe() -> Option<Vec<SampleMember>> {
+fn load_cached_universe() -> Option<UniverseCache> {
     let cache: UniverseCache = std::fs::read_to_string(universe_cache_path())
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())?;
-    (cache.sample_version == SAMPLE_VERSION && valid_universe(&cache.members))
-        .then_some(cache.members)
+    (cache.sample_version == SAMPLE_VERSION && valid_universe(&cache.members)).then_some(cache)
 }
 
 fn embedded_universe() -> Result<Vec<SampleMember>, String> {
@@ -641,6 +781,7 @@ fn save_cached_universe(members: &[SampleMember]) {
     let path = universe_cache_path();
     let cache = UniverseCache {
         sample_version: SAMPLE_VERSION.into(),
+        refreshed_on: Local::now().format("%Y-%m-%d").to_string(),
         members: members.to_vec(),
     };
     if let (Some(parent), Ok(text)) = (path.parent(), serde_json::to_string_pretty(&cache)) {
@@ -655,6 +796,8 @@ struct MemberMetric {
     name: String,
     exposure: Exposure,
     change_percent: f32,
+    gap_percent: f32,
+    intraday_percent: f32,
     relative_return: f32,
     activity_component: f32,
     float_market_cap: f64,
@@ -686,7 +829,11 @@ fn build_stratified_universe(
 ) -> Vec<SampleMember> {
     groups.sort_by_key(|(spec, _)| (spec.style, spec.subsector, spec.board));
     for (_, members) in &mut groups {
-        members.sort_by(|a, b| a.code.cmp(&b.code));
+        members.sort_by(|a, b| {
+            b.float_market_cap
+                .total_cmp(&a.float_market_cap)
+                .then_with(|| a.code.cmp(&b.code))
+        });
         members.dedup_by(|a, b| a.code == b.code);
     }
     let mut raw: HashMap<String, (String, Vec<(String, String)>)> = HashMap::new();
@@ -727,16 +874,21 @@ fn build_stratified_universe(
     let mut members = raw
         .into_iter()
         .map(|(code, (name, raw_exposures))| {
-            let weight = 1.0 / raw_exposures.len() as f32;
+            let style_counts = raw_exposures
+                .iter()
+                .fold(HashMap::new(), |mut counts, item| {
+                    *counts.entry(item.0.clone()).or_insert(0usize) += 1;
+                    counts
+                });
             SampleMember {
                 code,
                 name,
                 exposures: raw_exposures
                     .into_iter()
                     .map(|(style, subsector)| Exposure {
+                        weight: 1.0 / *style_counts.get(style.as_str()).unwrap_or(&1) as f32,
                         style,
                         subsector,
-                        weight,
                     })
                     .collect(),
             }
@@ -750,13 +902,11 @@ fn build_metrics(
     members: &[SampleMember],
     quotes: &HashMap<String, StockData>,
     last_amounts: &HashMap<String, f64>,
-    now_time: &str,
+    base_float_caps: &HashMap<String, f64>,
+    activity_minutes: Option<f32>,
     broad_market_return: Option<f32>,
 ) -> Vec<MemberMetric> {
-    let returns = quotes
-        .values()
-        .map(|quote| effective_return(quote, now_time))
-        .collect::<Vec<_>>();
+    let returns = quotes.values().map(total_return).collect::<Vec<_>>();
     let market_return = broad_market_return.unwrap_or_else(|| median(&returns));
     let mut board_returns: HashMap<&str, Vec<f32>> = HashMap::new();
     let mut caps = quotes
@@ -769,7 +919,7 @@ fn build_metrics(
     let high_cap = percentile_f64(&caps, 0.67);
     let mut cap_returns: [Vec<f32>; 3] = Default::default();
     for quote in quotes.values() {
-        let value = effective_return(quote, now_time);
+        let value = total_return(quote);
         board_returns
             .entry(listing_board(&quote.code))
             .or_default()
@@ -778,7 +928,7 @@ fn build_metrics(
     }
     let all_activity = quotes
         .values()
-        .map(|quote| incremental_activity(quote, last_amounts))
+        .map(|quote| incremental_activity(quote, last_amounts, activity_minutes))
         .filter(|value| *value > 0.0)
         .collect::<Vec<_>>();
     let median_activity = median(&all_activity).max(0.000_001);
@@ -788,7 +938,9 @@ fn build_metrics(
         let Some(quote) = quotes.get(&member.code) else {
             continue;
         };
-        let own_return = effective_return(quote, now_time);
+        let own_return = total_return(quote);
+        let gap_percent = opening_gap_return(quote);
+        let intraday_percent = own_return - gap_percent;
         let board_return = median(
             board_returns
                 .get(listing_board(&quote.code))
@@ -800,7 +952,8 @@ fn build_metrics(
         let relative_return =
             own_return - (0.5 * market_return + 0.3 * board_return + 0.2 * cap_return);
         let activity_component = if activity_ready && last_amounts.contains_key(&quote.code) {
-            let activity_ratio = incremental_activity(quote, last_amounts) / median_activity;
+            let activity_ratio =
+                incremental_activity(quote, last_amounts, activity_minutes) / median_activity;
             (activity_ratio.max(0.01).ln() / 2.0).clamp(-1.0, 1.0)
         } else {
             0.0
@@ -815,9 +968,14 @@ fn build_metrics(
                 },
                 exposure: exposure.clone(),
                 change_percent: quote.change_percent,
+                gap_percent,
+                intraday_percent,
                 relative_return,
                 activity_component,
-                float_market_cap: quote.float_market_cap,
+                float_market_cap: base_float_caps
+                    .get(&quote.code)
+                    .copied()
+                    .unwrap_or_else(|| previous_close_float_cap(quote)),
                 limit_state: if quote.upper_limit > 0.0 && quote.price >= quote.upper_limit * 0.9995
                 {
                     1
@@ -837,16 +995,31 @@ fn build_style(
     metrics: &[MemberMetric],
     previous: Option<&MarketSnapshot>,
     index_signal: f32,
+    now_time: &str,
 ) -> StyleAnalysis {
     let rows = metrics
         .iter()
         .filter(|metric| metric.exposure.style == style)
         .collect::<Vec<_>>();
-    let weight_sum = rows
-        .iter()
-        .map(|row| row.exposure.weight)
-        .sum::<f32>()
-        .max(1.0);
+    let mut unique_by_code = HashMap::new();
+    for row in &rows {
+        unique_by_code.entry(row.code.as_str()).or_insert(*row);
+    }
+    let mut unique_rows = unique_by_code.into_values().collect::<Vec<_>>();
+    unique_rows.sort_by(|a, b| a.code.cmp(&b.code));
+    let (
+        stock_weights,
+        float_cap_coverage,
+        top_stock_weight,
+        top_five_weight,
+        effective_sample_size,
+    ) = capped_float_cap_weights(&unique_rows);
+    let stock_weight = |code: &str| stock_weights.get(code).copied().unwrap_or(0.0);
+    let equal_stock_weight = if unique_rows.is_empty() {
+        0.0
+    } else {
+        1.0 / unique_rows.len() as f32
+    };
     let mut subsector_breadth: HashMap<&str, (f32, f32)> = HashMap::new();
     for row in &rows {
         let entry = subsector_breadth
@@ -862,56 +1035,69 @@ fn build_style(
     let mut contributions = rows
         .iter()
         .map(|row| {
-            let weight = row.exposure.weight / weight_sum;
+            let weight = stock_weight(&row.code) * row.exposure.weight;
             let return_component = (row.relative_return / 3.0).tanh();
             let breadth_component = if row.relative_return > 0.0 { 1.0 } else { -1.0 };
             let confirmation_component = (index_signal / 2.0).clamp(-1.0, 1.0);
-            let contribution = weight
-                * (40.0 * return_component
-                    + 25.0 * breadth_component
-                    + 20.0 * row.activity_component
-                    + 15.0 * confirmation_component);
+            let signal_score = 40.0 * return_component
+                + 25.0 * breadth_component
+                + 20.0 * row.activity_component
+                + 15.0 * confirmation_component;
+            let contribution = weight * signal_score;
             MarketContribution {
                 code: row.code.clone(),
                 name: row.name.clone(),
                 subsector: row.exposure.subsector.clone(),
                 contribution,
                 change_percent: row.change_percent,
+                stock_weight_percent: stock_weight(&row.code) * 100.0,
+                attribution_weight_percent: weight * 100.0,
+                signal_score,
+                contribution_share: 0.0,
+                gap_percent: row.gap_percent,
+                intraday_percent: row.intraday_percent,
                 reason: contribution_reason(row, index_signal),
             }
         })
         .collect::<Vec<_>>();
+    let absolute_contribution = contributions
+        .iter()
+        .map(|item| item.contribution.abs())
+        .sum::<f32>();
+    if absolute_contribution > f32::EPSILON {
+        for item in &mut contributions {
+            item.contribution_share = item.contribution.abs() / absolute_contribution * 100.0;
+        }
+    }
     let raw_score = contributions
         .iter()
         .map(|item| item.contribution)
         .sum::<f32>();
     let preference = (50.0 + raw_score / 2.0).clamp(0.0, 100.0);
     let relative_return = weighted_median(
-        &rows
+        &unique_rows
             .iter()
-            .map(|row| (row.relative_return, row.exposure.weight))
+            .map(|row| (row.relative_return, stock_weight(&row.code)))
             .collect::<Vec<_>>(),
     );
-    let breadth = rows
+    let breadth = unique_rows
         .iter()
         .map(|row| {
             if row.change_percent > 0.01 {
-                row.exposure.weight
+                equal_stock_weight
             } else if row.change_percent >= -0.01 {
-                row.exposure.weight * 0.5
+                equal_stock_weight * 0.5
             } else {
                 0.0
             }
         })
         .sum::<f32>()
-        / weight_sum
         * 100.0;
     let activity = (50.0
-        + rows
+        + unique_rows
             .iter()
-            .map(|row| row.activity_component * row.exposure.weight)
+            .map(|row| row.activity_component * stock_weight(&row.code))
             .sum::<f32>()
-            / weight_sum
             * 50.0)
         .clamp(0.0, 100.0);
     let subsector_confirmation = subsector_breadth
@@ -980,13 +1166,16 @@ fn build_style(
         .collect::<Vec<_>>();
     subsectors.sort_by(|a, b| b.contribution.abs().total_cmp(&a.contribution.abs()));
     contributions.sort_by(|a, b| b.contribution.total_cmp(&a.contribution));
-    let positive = contributions
+    let all_contributions = contributions.clone();
+    let mut stock_contributions = aggregate_stock_contributions(&contributions);
+    stock_contributions.sort_by(|a, b| b.contribution.total_cmp(&a.contribution));
+    let positive = stock_contributions
         .iter()
         .filter(|item| item.contribution > 0.0)
         .take(5)
         .cloned()
         .collect();
-    let negative = contributions
+    let negative = stock_contributions
         .iter()
         .rev()
         .filter(|item| item.contribution < 0.0)
@@ -995,9 +1184,9 @@ fn build_style(
         .collect();
     let heat = (50.0
         + weighted_median(
-            &rows
+            &unique_rows
                 .iter()
-                .map(|row| (row.change_percent, row.exposure.weight))
+                .map(|row| (row.change_percent, stock_weight(&row.code)))
                 .collect::<Vec<_>>(),
         ) * 8.0
         + (breadth - 50.0) * 0.3)
@@ -1017,32 +1206,23 @@ fn build_style(
         .count() as f32
         / subsectors.len().max(1) as f32
         * 100.0;
-    let equal_weight_return = rows
+    let equal_weight_return = unique_rows
         .iter()
-        .map(|row| row.relative_return * row.exposure.weight)
-        .sum::<f32>()
-        / weight_sum;
-    let cap_weight_sum = rows
+        .map(|row| row.relative_return * equal_stock_weight)
+        .sum::<f32>();
+    let cap_weight_return = unique_rows
         .iter()
-        .map(|row| row.float_market_cap.max(0.0) * row.exposure.weight as f64)
-        .sum::<f64>();
-    let cap_weight_return = if cap_weight_sum > 0.0 {
-        (rows
-            .iter()
-            .map(|row| {
-                row.relative_return as f64
-                    * row.float_market_cap.max(0.0)
-                    * row.exposure.weight as f64
-            })
-            .sum::<f64>()
-            / cap_weight_sum) as f32
-    } else {
-        equal_weight_return
-    };
+        .map(|row| row.relative_return * stock_weight(&row.code))
+        .sum::<f32>();
     let score_change = previous
         .and_then(|snapshot| snapshot.styles.iter().find(|item| item.id == style))
         .map(|old| score - old.score)
         .unwrap_or(0.0);
+    let score_velocity = previous
+        .and_then(|snapshot| trading_minutes_between(&snapshot.time, now_time))
+        .filter(|minutes| *minutes >= 1.0)
+        .map(|minutes| score_change * 5.0 / minutes)
+        .unwrap_or(score_change);
     StyleAnalysis {
         id: style.into(),
         label: style_label(style).into(),
@@ -1059,6 +1239,7 @@ fn build_style(
         }
         .into(),
         score_change,
+        score_velocity,
         relative_return,
         breadth,
         activity,
@@ -1072,13 +1253,164 @@ fn build_style(
         equal_weight_return,
         cap_weight_return,
         weighting_divergence: cap_weight_return - equal_weight_return,
+        float_cap_coverage,
+        top_stock_weight,
+        top_five_weight,
+        effective_sample_size,
         subsectors,
+        contributions: all_contributions,
         positive,
         negative,
     }
 }
 
-fn exclusion_reason(quote: &StockData, trading_date: &str) -> Option<&'static str> {
+fn previous_close_float_cap(quote: &StockData) -> f64 {
+    if quote.float_market_cap <= 0.0 {
+        return 0.0;
+    }
+    let price_factor = 1.0 + quote.change_percent as f64 / 100.0;
+    if price_factor > 0.0 {
+        quote.float_market_cap / price_factor
+    } else {
+        0.0
+    }
+}
+
+fn aggregate_stock_contributions(items: &[MarketContribution]) -> Vec<MarketContribution> {
+    let mut aggregated: HashMap<&str, MarketContribution> = HashMap::new();
+    for item in items {
+        aggregated
+            .entry(item.code.as_str())
+            .and_modify(|current| {
+                current.contribution += item.contribution;
+                current.attribution_weight_percent += item.attribution_weight_percent;
+                current.contribution_share += item.contribution_share;
+                if !current
+                    .subsector
+                    .split(" / ")
+                    .any(|name| name == item.subsector)
+                {
+                    current.subsector.push_str(" / ");
+                    current.subsector.push_str(&item.subsector);
+                }
+            })
+            .or_insert_with(|| item.clone());
+    }
+    aggregated.into_values().collect()
+}
+
+fn capped_float_cap_weights(rows: &[&MemberMetric]) -> (HashMap<String, f32>, f32, f32, f32, f32) {
+    if rows.is_empty() {
+        return (HashMap::new(), 0.0, 0.0, 0.0, 0.0);
+    }
+    let mut valid_caps = rows
+        .iter()
+        .map(|row| row.float_market_cap)
+        .filter(|cap| *cap > 0.0 && cap.is_finite())
+        .collect::<Vec<_>>();
+    valid_caps.sort_by(f64::total_cmp);
+    let coverage = valid_caps.len() as f32 / rows.len() as f32 * 100.0;
+    let fallback = if valid_caps.is_empty() {
+        1.0
+    } else {
+        valid_caps[valid_caps.len() / 2]
+    };
+    let mut weights = rows
+        .iter()
+        .map(|row| {
+            if row.float_market_cap > 0.0 && row.float_market_cap.is_finite() {
+                row.float_market_cap
+            } else {
+                fallback
+            }
+        })
+        .collect::<Vec<_>>();
+    normalize_weights(&mut weights);
+
+    // The 10% / top-five 40% constraints are only jointly feasible for a broad universe.
+    if weights.len() >= 15 {
+        for _ in 0..64 {
+            let before = weights.clone();
+            cap_individual_weights(&mut weights, MAX_STOCK_WEIGHT);
+            cap_top_group(&mut weights, 5, MAX_TOP_FIVE_WEIGHT);
+            if weights
+                .iter()
+                .zip(&before)
+                .all(|(after, old)| (after - old).abs() < 1e-10)
+            {
+                break;
+            }
+        }
+        normalize_weights(&mut weights);
+    }
+
+    let mut sorted = weights.clone();
+    sorted.sort_by(|a, b| b.total_cmp(a));
+    let top_stock = sorted.first().copied().unwrap_or(0.0) as f32 * 100.0;
+    let top_five = sorted.iter().take(5).sum::<f64>() as f32 * 100.0;
+    let effective = (1.0 / weights.iter().map(|weight| weight * weight).sum::<f64>()) as f32;
+    let mapped = rows
+        .iter()
+        .zip(weights)
+        .map(|(row, weight)| (row.code.clone(), weight as f32))
+        .collect();
+    (mapped, coverage, top_stock, top_five, effective)
+}
+
+fn normalize_weights(weights: &mut [f64]) {
+    let total = weights.iter().sum::<f64>();
+    if total > 0.0 {
+        for weight in weights {
+            *weight /= total;
+        }
+    }
+}
+
+fn cap_individual_weights(weights: &mut [f64], cap: f64) {
+    let mut excess = 0.0;
+    let mut recipients = 0.0;
+    for weight in weights.iter_mut() {
+        if *weight > cap {
+            excess += *weight - cap;
+            *weight = cap;
+        } else if *weight < cap {
+            recipients += *weight;
+        }
+    }
+    if excess > 0.0 && recipients > 0.0 {
+        for weight in weights.iter_mut().filter(|weight| **weight < cap) {
+            *weight += excess * *weight / recipients;
+        }
+    }
+}
+
+fn cap_top_group(weights: &mut [f64], count: usize, cap: f64) {
+    let mut ranked = (0..weights.len()).collect::<Vec<_>>();
+    ranked.sort_by(|a, b| weights[*b].total_cmp(&weights[*a]));
+    let top = ranked.iter().take(count).copied().collect::<HashSet<_>>();
+    let top_sum = top.iter().map(|index| weights[*index]).sum::<f64>();
+    if top_sum <= cap {
+        return;
+    }
+    let excess = top_sum - cap;
+    let rest_sum = ranked
+        .iter()
+        .filter(|index| !top.contains(index))
+        .map(|index| weights[*index])
+        .sum::<f64>();
+    if rest_sum <= 0.0 {
+        return;
+    }
+    for (index, weight) in weights.iter_mut().enumerate() {
+        if top.contains(&index) {
+            *weight *= cap / top_sum;
+        } else {
+            *weight += excess * *weight / rest_sum;
+        }
+    }
+}
+
+fn exclusion_reason(quote: &StockData, trading_date: &str, phase: &str) -> Option<&'static str> {
     if quote.name.to_ascii_uppercase().contains("ST") {
         return Some("st");
     }
@@ -1090,7 +1422,10 @@ fn exclusion_reason(quote: &StockData, trading_date: &str) -> Option<&'static st
     if prefixed_new || recently_listed {
         return Some("new");
     }
-    if quote.volume <= 0.0 && quote.amount <= 0.0 {
+    if matches!(phase, "opening_observation" | "continuous")
+        && quote.volume <= 0.0
+        && quote.amount <= 0.0
+    {
         return Some("halted");
     }
     None
@@ -1107,6 +1442,19 @@ fn contribution_reason(metric: &MemberMetric, index_signal: f32) -> String {
         reasons.push("相对收益领先");
     } else if metric.relative_return <= -0.5 {
         reasons.push("相对收益落后");
+    }
+    if metric.gap_percent.abs() >= 0.75 {
+        if metric.intraday_percent.signum() == metric.gap_percent.signum()
+            && metric.intraday_percent.abs() >= 0.25
+        {
+            reasons.push("竞价方向延续");
+        } else if metric.intraday_percent.signum() != metric.gap_percent.signum()
+            && metric.intraday_percent.abs() >= 0.5
+        {
+            reasons.push("竞价方向反转");
+        } else {
+            reasons.push("隔夜跳空");
+        }
     }
     if metric.activity_component >= 0.25 {
         reasons.push("增量成交活跃");
@@ -1168,21 +1516,21 @@ fn rotation_summary(
     }
     let mean_change = styles
         .iter()
-        .map(|style| style.score_change.abs())
+        .map(|style| style.score_velocity.abs())
         .sum::<f32>()
         / styles.len().max(1) as f32;
     let stability = (100.0 - mean_change * 8.0).clamp(0.0, 100.0);
-    if styles.iter().all(|style| style.score_change >= 2.0) {
+    if styles.iter().all(|style| style.score_velocity >= 2.0) {
         return (None, "多线同步走强".into(), stability);
     }
-    if styles.iter().all(|style| style.score_change <= -2.0) {
+    if styles.iter().all(|style| style.score_velocity <= -2.0) {
         return (None, "多线同步走弱".into(), stability);
     }
     let mut ranked = styles.iter().collect::<Vec<_>>();
-    ranked.sort_by(|a, b| b.score_change.total_cmp(&a.score_change));
+    ranked.sort_by(|a, b| b.score_velocity.total_cmp(&a.score_velocity));
     let first = ranked[0];
-    let second = ranked.get(1).map_or(0.0, |style| style.score_change);
-    if first.score_change >= 3.0 && first.score_change - second >= 1.0 {
+    let second = ranked.get(1).map_or(0.0, |style| style.score_velocity);
+    if first.score_velocity >= 3.0 && first.score_velocity - second >= 1.0 {
         return (
             Some(first.id.clone()),
             format!("向{}增强", first.label),
@@ -1215,49 +1563,50 @@ fn style_index_signals(quotes: &[StockData]) -> HashMap<String, f32> {
         .collect()
 }
 
-fn broad_index_return(quotes: &[StockData], now_time: &str) -> Option<f32> {
+fn broad_index_return(quotes: &[StockData], _now_time: &str) -> Option<f32> {
     let values = quotes
         .iter()
         .filter(|quote| is_broad_index(&quote.code))
-        .map(|quote| effective_return(quote, now_time))
+        .map(total_return)
         .collect::<Vec<_>>();
     (!values.is_empty()).then(|| median(&values))
 }
 
-fn effective_return(quote: &StockData, now_time: &str) -> f32 {
+fn total_return(quote: &StockData) -> f32 {
     if quote.prev_close <= 0.0 || quote.price <= 0.0 {
         return 0.0;
     }
-    let gap = if quote.open > 0.0 {
+    if quote.change_percent.is_finite() {
+        quote.change_percent
+    } else {
+        (quote.price / quote.prev_close - 1.0) * 100.0
+    }
+}
+
+fn opening_gap_return(quote: &StockData) -> f32 {
+    if quote.prev_close > 0.0 && quote.open > 0.0 {
         (quote.open / quote.prev_close - 1.0) * 100.0
     } else {
         0.0
-    };
-    let intraday = if quote.open > 0.0 {
-        (quote.price / quote.open - 1.0) * 100.0
-    } else {
-        quote.change_percent
-    };
-    let time = parse_time(now_time);
-    let gap_weight = if time
-        .map(|t| t < NaiveTime::from_hms_opt(10, 0, 0).unwrap())
-        .unwrap_or(false)
-    {
-        0.3
-    } else {
-        0.2
-    };
-    gap_weight * gap + (1.0 - gap_weight) * intraday
+    }
 }
 
-fn incremental_activity(quote: &StockData, last_amounts: &HashMap<String, f64>) -> f32 {
+fn incremental_activity(
+    quote: &StockData,
+    last_amounts: &HashMap<String, f64>,
+    elapsed_minutes: Option<f32>,
+) -> f32 {
     if quote.float_market_cap <= 0.0 {
         return 0.0;
     }
+    let Some(elapsed_minutes) = elapsed_minutes.filter(|minutes| *minutes >= 1.0) else {
+        return 0.0;
+    };
     let Some(previous) = last_amounts.get(&quote.code).copied() else {
         return 0.0;
     };
-    ((quote.amount as f64 - previous).max(0.0) / quote.float_market_cap) as f32
+    ((quote.amount as f64 - previous).max(0.0) / quote.float_market_cap / elapsed_minutes as f64)
+        as f32
 }
 
 fn listing_board(code: &str) -> &'static str {
@@ -1284,6 +1633,55 @@ fn cap_bucket(cap: f64, low: f64, high: f64) -> usize {
 
 fn parse_time(value: &str) -> Option<NaiveTime> {
     NaiveTime::parse_from_str(value, "%H:%M:%S").ok()
+}
+
+fn analysis_phase(value: &str) -> &'static str {
+    let Some(time) = parse_time(value) else {
+        return "closed";
+    };
+    let auction_observe = NaiveTime::from_hms_opt(9, 20, 0).unwrap();
+    let auction_final = NaiveTime::from_hms_opt(9, 25, 0).unwrap();
+    let open = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
+    let confirmed = NaiveTime::from_hms_opt(9, 45, 0).unwrap();
+    let morning_end = NaiveTime::from_hms_opt(11, 31, 0).unwrap();
+    let afternoon_start = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
+    let afternoon_end = NaiveTime::from_hms_opt(15, 6, 0).unwrap();
+    if (auction_observe..auction_final).contains(&time) {
+        "auction_observe"
+    } else if (auction_final..open).contains(&time) {
+        "auction_final"
+    } else if (open..confirmed).contains(&time) {
+        "opening_observation"
+    } else if (confirmed..=morning_end).contains(&time)
+        || (afternoon_start..=afternoon_end).contains(&time)
+    {
+        "continuous"
+    } else {
+        "closed"
+    }
+}
+
+fn trading_minutes_between(start: &str, end: &str) -> Option<f32> {
+    fn position(time: NaiveTime) -> f32 {
+        let morning_start = NaiveTime::from_hms_opt(9, 30, 0).unwrap();
+        let morning_end = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
+        let afternoon_start = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
+        let afternoon_end = NaiveTime::from_hms_opt(15, 0, 0).unwrap();
+        if time <= morning_start {
+            0.0
+        } else if time <= morning_end {
+            (time - morning_start).num_seconds() as f32 / 60.0
+        } else if time < afternoon_start {
+            120.0
+        } else if time <= afternoon_end {
+            120.0 + (time - afternoon_start).num_seconds() as f32 / 60.0
+        } else {
+            240.0
+        }
+    }
+    parse_time(start)
+        .zip(parse_time(end))
+        .map(|(start, end)| (position(end) - position(start)).max(0.0))
 }
 
 fn is_market_session_time(value: &str) -> bool {
@@ -1616,6 +2014,114 @@ mod tests {
     }
 
     #[test]
+    fn short_index_outage_reuses_a_recent_same_day_snapshot() {
+        let mut engine = MarketEngine {
+            members: vec![
+                member("y", "young", "AI芯片"),
+                member("m", "middle", "游戏"),
+                member("o", "old", "银行红利"),
+            ],
+            ..Default::default()
+        };
+        let stocks = |time: &str| {
+            let mut quotes = vec![
+                quote("y", 1.0, 1_000.0),
+                quote("m", 2.0, 1_000.0),
+                quote("o", 0.5, 1_000.0),
+            ];
+            for quote in &mut quotes {
+                quote.time = time.into();
+            }
+            quotes
+        };
+        let first = engine.analyze_at_date(
+            QuoteFetchResult {
+                quotes: stocks("10:00:00"),
+                index_quotes: complete_index_evidence("10:00:00"),
+                index_error: String::new(),
+                primary_count: 3,
+                fallback_count: 0,
+            },
+            None,
+            "2026-07-10",
+            "10:00:00",
+            5,
+            true,
+        );
+        let second = engine.analyze_at_date(
+            QuoteFetchResult {
+                quotes: stocks("10:05:00"),
+                index_quotes: Vec::new(),
+                index_error: "temporary outage".into(),
+                primary_count: 3,
+                fallback_count: 0,
+            },
+            Some(&first),
+            "2026-07-10",
+            "10:05:00",
+            5,
+            true,
+        );
+        assert!(second.quality.index_cached);
+        assert!(second.quality.conclusion_ready);
+        assert_eq!(second.quality.index_received, index_secids().len());
+    }
+
+    #[test]
+    fn partial_broad_fallback_does_not_replace_a_recent_complete_index_cache() {
+        let mut engine = MarketEngine {
+            members: vec![
+                member("y", "young", "AI芯片"),
+                member("m", "middle", "游戏"),
+                member("o", "old", "银行红利"),
+            ],
+            ..Default::default()
+        };
+        let mut stocks = vec![
+            quote("y", 1.0, 1_000.0),
+            quote("m", 2.0, 1_000.0),
+            quote("o", 0.5, 1_000.0),
+        ];
+        for quote in &mut stocks {
+            quote.time = "10:00:00".into();
+        }
+        let first = engine.analyze_at_date(
+            QuoteFetchResult {
+                quotes: stocks.clone(),
+                index_quotes: complete_index_evidence("10:00:00"),
+                index_error: String::new(),
+                primary_count: 3,
+                fallback_count: 0,
+            },
+            None,
+            "2026-07-10",
+            "10:00:00",
+            5,
+            true,
+        );
+        for quote in &mut stocks {
+            quote.time = "10:05:00".into();
+        }
+        let second = engine.analyze_at_date(
+            QuoteFetchResult {
+                quotes: stocks,
+                index_quotes: vec![quote("em:000300", 1.0, 0.0)],
+                index_error: String::new(),
+                primary_count: 3,
+                fallback_count: 0,
+            },
+            Some(&first),
+            "2026-07-10",
+            "10:05:00",
+            5,
+            true,
+        );
+        assert!(second.quality.index_cached);
+        assert!(second.quality.conclusion_ready);
+        assert_eq!(second.quality.index_received, index_secids().len());
+    }
+
+    #[test]
     fn offline_proxy_never_claims_a_dominant_style() {
         let mut engine = MarketEngine {
             members: vec![
@@ -1689,12 +2195,14 @@ mod tests {
                 weight: 1.0,
             },
             change_percent: 3.0,
+            gap_percent: 0.0,
+            intraday_percent: 3.0,
             relative_return: 2.0,
             activity_component: 0.5,
             float_market_cap: 1_000_000_000.0,
             limit_state: 0,
         }];
-        let style = build_style("middle", &rows, None, 1.0);
+        let style = build_style("middle", &rows, None, 1.0, "10:30:00");
         let subtotal: f32 = style.subsectors.iter().map(|item| item.contribution).sum();
         assert!((style.preference - (50.0 + subtotal / 2.0)).abs() < 0.001);
     }
@@ -1710,12 +2218,14 @@ mod tests {
                 weight: 1.0,
             },
             change_percent: 5.0,
+            gap_percent: 0.0,
+            intraday_percent: 5.0,
             relative_return: 0.0,
             activity_component: 0.0,
             float_market_cap: 1_000_000_000.0,
             limit_state: 0,
         }];
-        let style = build_style("young", &rows, None, 0.0);
+        let style = build_style("young", &rows, None, 0.0, "10:30:00");
         assert_eq!(style.state, "strong");
         assert!(style.score >= STRONG_SCORE);
         assert!(style.preference < 50.0);
@@ -1736,6 +2246,8 @@ mod tests {
                     weight: 1.0,
                 },
                 change_percent: -1.0,
+                gap_percent: 0.0,
+                intraday_percent: -1.0,
                 relative_return: -1.0,
                 activity_component: 0.0,
                 float_market_cap: 1.0,
@@ -1750,13 +2262,15 @@ mod tests {
                     weight: 1.0,
                 },
                 change_percent: 1.0,
+                gap_percent: 0.0,
+                intraday_percent: 1.0,
                 relative_return: 1.0,
                 activity_component: 0.5,
                 float_market_cap: 9.0,
                 limit_state: 1,
             },
         ];
-        let style = build_style("old", &rows, None, 0.0);
+        let style = build_style("old", &rows, None, 0.0, "10:30:00");
         assert!(style.weighting_divergence > 0.7);
         assert!(style
             .positive
@@ -1776,10 +2290,23 @@ mod tests {
         new_stock.listing_date = "2026-07-01".into();
         let halted = quote("halted", 0.0, 0.0);
         let normal = quote("normal", 1.0, 1_000.0);
-        assert_eq!(exclusion_reason(&st, "2026-07-10"), Some("st"));
-        assert_eq!(exclusion_reason(&new_stock, "2026-07-10"), Some("new"));
-        assert_eq!(exclusion_reason(&halted, "2026-07-10"), Some("halted"));
-        assert_eq!(exclusion_reason(&normal, "2026-07-10"), None);
+        assert_eq!(
+            exclusion_reason(&st, "2026-07-10", "continuous"),
+            Some("st")
+        );
+        assert_eq!(
+            exclusion_reason(&new_stock, "2026-07-10", "continuous"),
+            Some("new")
+        );
+        assert_eq!(
+            exclusion_reason(&halted, "2026-07-10", "continuous"),
+            Some("halted")
+        );
+        assert_eq!(exclusion_reason(&normal, "2026-07-10", "continuous"), None);
+        assert_eq!(
+            exclusion_reason(&halted, "2026-07-10", "auction_final"),
+            None
+        );
     }
 
     #[test]
@@ -1821,18 +2348,21 @@ mod tests {
                 id: "young".into(),
                 label: "小登".into(),
                 score_change: 5.0,
+                score_velocity: 5.0,
                 ..Default::default()
             },
             StyleAnalysis {
                 id: "middle".into(),
                 label: "中登".into(),
                 score_change: 1.0,
+                score_velocity: 1.0,
                 ..Default::default()
             },
             StyleAnalysis {
                 id: "old".into(),
                 label: "老登".into(),
                 score_change: -1.0,
+                score_velocity: -1.0,
                 ..Default::default()
             },
         ];
@@ -1849,7 +2379,14 @@ mod tests {
         let quotes = [("a".into(), quote("a", 1.0, 1_000.0))]
             .into_iter()
             .collect();
-        let rows = build_metrics(&members, &quotes, &HashMap::new(), "10:30:00", None);
+        let rows = build_metrics(
+            &members,
+            &quotes,
+            &HashMap::new(),
+            &HashMap::new(),
+            None,
+            None,
+        );
         assert_eq!(rows[0].activity_component, 0.0);
     }
 
@@ -1860,7 +2397,7 @@ mod tests {
         let mut board = quote("em:BK1127", 9.0, 0.0);
         board.open = board.prev_close;
         let value = broad_index_return(&[broad, board], "11:00:00").unwrap();
-        assert!((value - 1.6).abs() < 0.001);
+        assert!((value - 2.0).abs() < 0.001);
     }
 
     #[test]
@@ -1887,6 +2424,10 @@ mod tests {
         let member = |code: &str| crate::quotes::BoardMember {
             code: code.into(),
             name: code.into(),
+            float_market_cap: code
+                .trim_start_matches(|character: char| !character.is_ascii_digit())
+                .parse::<f64>()
+                .unwrap_or(1.0),
         };
         let first = build_stratified_universe(
             vec![
@@ -1923,5 +2464,102 @@ mod tests {
             .exposures
             .iter()
             .any(|exposure| exposure.subsector == spec.subsector))));
+    }
+
+    #[test]
+    fn float_cap_weights_obey_concentration_limits() {
+        let metrics = (1..=20)
+            .map(|index| MemberMetric {
+                code: format!("s{index}"),
+                name: format!("s{index}"),
+                exposure: Exposure {
+                    style: "young".into(),
+                    subsector: "AI芯片".into(),
+                    weight: 1.0,
+                },
+                change_percent: 0.0,
+                gap_percent: 0.0,
+                intraday_percent: 0.0,
+                relative_return: 0.0,
+                activity_component: 0.0,
+                float_market_cap: if index == 20 { 10_000.0 } else { index as f64 },
+                limit_state: 0,
+            })
+            .collect::<Vec<_>>();
+        let rows = metrics.iter().collect::<Vec<_>>();
+        let (weights, coverage, top, top_five, effective) = capped_float_cap_weights(&rows);
+        assert!((weights.values().sum::<f32>() - 1.0).abs() < 0.0001);
+        assert_eq!(coverage, 100.0);
+        assert!(top <= 10.001);
+        assert!(top_five <= 40.001);
+        assert!(effective >= 10.0);
+    }
+
+    #[test]
+    fn previous_close_cap_is_stable_across_intraday_price_moves() {
+        let mut first = quote("a", 10.0, 1_000.0);
+        first.float_market_cap = 110.0;
+        let mut second = quote("a", 20.0, 2_000.0);
+        second.float_market_cap = 120.0;
+        assert!((previous_close_float_cap(&first) - 100.0).abs() < 0.0001);
+        assert!((previous_close_float_cap(&second) - 100.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn market_phases_separate_final_auction_from_continuous_trading() {
+        assert_eq!(analysis_phase("09:19:59"), "closed");
+        assert_eq!(analysis_phase("09:20:00"), "auction_observe");
+        assert_eq!(analysis_phase("09:25:00"), "auction_final");
+        assert_eq!(analysis_phase("09:30:00"), "opening_observation");
+        assert_eq!(analysis_phase("09:45:00"), "continuous");
+        assert_eq!(analysis_phase("12:00:00"), "closed");
+        assert_eq!(analysis_phase("13:00:00"), "continuous");
+    }
+
+    #[test]
+    fn trading_elapsed_time_excludes_the_lunch_break() {
+        assert!((trading_minutes_between("11:25:00", "13:05:00").unwrap() - 10.0).abs() < 0.001);
+        assert!((trading_minutes_between("09:30:00", "10:00:00").unwrap() - 30.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn total_return_does_not_change_only_because_clock_time_passes() {
+        let mut sample = quote("a", 5.0, 1_000.0);
+        sample.open = 105.0;
+        sample.price = 105.0;
+        assert!((total_return(&sample) - 5.0).abs() < 0.001);
+        assert!((opening_gap_return(&sample) - 5.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn subsector_overlap_splits_attribution_without_diluting_style_membership() {
+        let board_member = crate::quotes::BoardMember {
+            code: "sh600000".into(),
+            name: "sample".into(),
+            float_market_cap: 100.0,
+        };
+        let members = build_stratified_universe(
+            vec![
+                (&BOARDS[0], vec![board_member.clone()]),
+                (&BOARDS[1], vec![board_member.clone()]),
+                (&BOARDS[5], vec![board_member]),
+            ],
+            10,
+        );
+        let sample = &members[0];
+        let young = sample
+            .exposures
+            .iter()
+            .filter(|exposure| exposure.style == "young")
+            .map(|exposure| exposure.weight)
+            .sum::<f32>();
+        let middle = sample
+            .exposures
+            .iter()
+            .filter(|exposure| exposure.style == "middle")
+            .map(|exposure| exposure.weight)
+            .sum::<f32>();
+        assert!((young - 1.0).abs() < 0.0001);
+        assert!((middle - 1.0).abs() < 0.0001);
     }
 }

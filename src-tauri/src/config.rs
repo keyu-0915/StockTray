@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
@@ -10,7 +11,8 @@ use chrono::{Datelike, Local};
 use crate::models::{
     default_background_refresh_interval_ms, default_display_fields, default_theme,
     default_tooltip_fields, AppConfig, AppearanceConfig, MarketAnalysisConfig, MarketAnalysisState,
-    PopupConfig, StockEntry, CURRENT_CONFIG_SCHEMA_VERSION,
+    MarketDayArchive, MarketDaySummary, MarketHistoryStore, MarketStorageInfo, PopupConfig,
+    StockEntry, CURRENT_CONFIG_SCHEMA_VERSION,
 };
 
 pub(crate) fn config_path() -> PathBuf {
@@ -24,11 +26,166 @@ pub(crate) fn market_state_path() -> PathBuf {
     config_path().with_file_name("market-snapshots.json")
 }
 
+pub(crate) fn market_history_path() -> PathBuf {
+    config_path().with_file_name("market-history.json")
+}
+
+pub(crate) fn load_market_history() -> MarketHistoryStore {
+    let mut store = fs::read_to_string(market_history_path())
+        .ok()
+        .and_then(|text| serde_json::from_str::<MarketHistoryStore>(&text).ok())
+        .unwrap_or_default();
+    store.days.retain(|day| {
+        !day.trading_date.is_empty() && day.snapshot.trading_date == day.trading_date
+    });
+    store
+        .days
+        .sort_by(|a, b| a.trading_date.cmp(&b.trading_date));
+    store.days.dedup_by(|a, b| {
+        if a.trading_date == b.trading_date {
+            *a = b.clone();
+            true
+        } else {
+            false
+        }
+    });
+    store.schema_version = crate::models::default_market_history_schema_version();
+    store
+}
+
+pub(crate) fn save_market_history(store: &MarketHistoryStore) -> Result<(), String> {
+    let mut normalized = store.clone();
+    normalized.schema_version = crate::models::default_market_history_schema_version();
+    atomic_write(
+        &market_history_path(),
+        serde_json::to_vec(&normalized)
+            .map_err(|error| error.to_string())?
+            .as_slice(),
+    )
+}
+
+pub(crate) fn archive_market_day(state: &MarketAnalysisState) -> Result<bool, String> {
+    let Some(snapshot) = state.current.as_ref() else {
+        return Ok(false);
+    };
+    if snapshot.trading_date.is_empty() {
+        return Ok(false);
+    }
+    let mut store = load_market_history();
+    let day = MarketDayArchive {
+        trading_date: snapshot.trading_date.clone(),
+        sample_version: state.sample_version.clone(),
+        algorithm_version: state.algorithm_version.clone(),
+        snapshot: snapshot.clone(),
+        history: state.history.clone(),
+    };
+    if let Some(existing) = store
+        .days
+        .iter_mut()
+        .find(|item| item.trading_date == day.trading_date)
+    {
+        existing.snapshot = day.snapshot;
+        existing.sample_version = day.sample_version;
+        existing.algorithm_version = day.algorithm_version;
+        existing.history.extend(day.history);
+        existing.history.sort_by(|a, b| a.time.cmp(&b.time));
+        existing.history.dedup_by(|a, b| a.time == b.time);
+    } else {
+        store.days.push(day);
+        store
+            .days
+            .sort_by(|a, b| a.trading_date.cmp(&b.trading_date));
+    }
+    save_market_history(&store)?;
+    Ok(true)
+}
+
+pub(crate) fn market_storage_info(current: &MarketAnalysisState) -> MarketStorageInfo {
+    let store = load_market_history();
+    let current_date = current
+        .current
+        .as_ref()
+        .map(|snapshot| snapshot.trading_date.clone())
+        .unwrap_or_default();
+    let mut days = store
+        .days
+        .iter()
+        .map(|day| MarketDaySummary {
+            trading_date: day.trading_date.clone(),
+            trend_points: day.history.len(),
+            leader_label: day.snapshot.leader_label.clone(),
+            status: day.snapshot.status.clone(),
+            is_current: false,
+        })
+        .collect::<Vec<_>>();
+    if let Some(snapshot) = current.current.as_ref() {
+        if let Some(existing) = days
+            .iter_mut()
+            .find(|day| day.trading_date == snapshot.trading_date)
+        {
+            existing.trend_points += current.history.len();
+            existing.leader_label = snapshot.leader_label.clone();
+            existing.status = snapshot.status.clone();
+            existing.is_current = true;
+        } else {
+            days.push(MarketDaySummary {
+                trading_date: snapshot.trading_date.clone(),
+                trend_points: current.history.len(),
+                leader_label: snapshot.leader_label.clone(),
+                status: snapshot.status.clone(),
+                is_current: true,
+            });
+        }
+    }
+    days.sort_by(|a, b| b.trading_date.cmp(&a.trading_date));
+    let size_bytes = [market_state_path(), market_history_path()]
+        .iter()
+        .filter_map(|path| fs::metadata(path).ok().map(|metadata| metadata.len()))
+        .sum();
+    MarketStorageInfo {
+        total_days: days.len(),
+        archived_days: store.days.len(),
+        trend_points: days.iter().map(|day| day.trend_points).sum(),
+        size_bytes,
+        earliest_date: days
+            .last()
+            .map(|day| day.trading_date.clone())
+            .unwrap_or_default(),
+        latest_date: days
+            .first()
+            .map(|day| day.trading_date.clone())
+            .unwrap_or_default(),
+        current_date,
+        days,
+    }
+}
+
+pub(crate) fn delete_market_history_day(trading_date: &str) -> Result<bool, String> {
+    let mut store = load_market_history();
+    let before = store.days.len();
+    store.days.retain(|day| day.trading_date != trading_date);
+    if store.days.len() == before {
+        return Ok(false);
+    }
+    save_market_history(&store)?;
+    Ok(true)
+}
+
+pub(crate) fn clear_market_history() -> Result<(), String> {
+    save_market_history(&MarketHistoryStore::default())
+}
+
 pub(crate) fn load_market_state() -> MarketAnalysisState {
-    let state = fs::read_to_string(market_state_path())
+    let state: MarketAnalysisState = fs::read_to_string(market_state_path())
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
+    let incompatible = state.current.is_some()
+        && (state.sample_version != crate::market::SAMPLE_VERSION
+            || state.algorithm_version != crate::market::ALGORITHM_VERSION);
+    if incompatible {
+        let _ = archive_market_day(&state);
+    }
     let now = Local::now();
     normalize_market_state(
         state,
@@ -114,17 +271,12 @@ fn normalize_market_state(
 
 pub(crate) fn expire_market_state_if_needed(
     state: &mut MarketAnalysisState,
-    today: &str,
-    is_weekday: bool,
+    _today: &str,
+    _is_weekday: bool,
 ) -> bool {
     let wrong_version = state.sample_version != crate::market::SAMPLE_VERSION
         || state.algorithm_version != crate::market::ALGORITHM_VERSION;
-    let old_trading_day = is_weekday
-        && state
-            .current
-            .as_ref()
-            .is_some_and(|snapshot| snapshot.trading_date != today);
-    if wrong_version || old_trading_day || (state.current.is_none() && !state.history.is_empty()) {
+    if wrong_version || (state.current.is_none() && !state.history.is_empty()) {
         *state = empty_market_state();
         true
     } else {
@@ -244,7 +396,67 @@ pub(crate) fn normalize_config(mut config: AppConfig) -> AppConfig {
         5 | 15 | 30 => config.market_analysis.refresh_minutes,
         _ => 15,
     };
+    normalize_external_data_sources(&mut config);
+    normalize_data_source_order(&mut config);
     config
+}
+
+fn normalize_external_data_sources(config: &mut AppConfig) {
+    let mut ids = HashSet::new();
+    for (index, source) in config.external_data_sources.iter_mut().enumerate() {
+        source.provider = source.provider.trim().to_ascii_lowercase();
+        if source.provider.is_empty() {
+            source.provider = "futu_opend".into();
+        }
+        source.name = source.name.trim().to_string();
+        if source.name.is_empty() {
+            source.name = "富途 OpenD".into();
+        }
+        source.host = source.host.trim().to_string();
+        if source.host.is_empty() {
+            source.host = "127.0.0.1".into();
+        }
+        if source.port == 0 {
+            source.port = 32179;
+        }
+
+        let base_id = if source.id.trim().is_empty() {
+            format!("{}-{}", source.provider, index + 1)
+        } else {
+            source.id.trim().to_string()
+        };
+        let mut id = base_id.clone();
+        let mut suffix = 2;
+        while !ids.insert(id.clone()) {
+            id = format!("{base_id}-{suffix}");
+            suffix += 1;
+        }
+        source.id = id;
+    }
+}
+
+fn normalize_data_source_order(config: &mut AppConfig) {
+    let valid_external = config
+        .external_data_sources
+        .iter()
+        .map(|source| source.id.as_str())
+        .collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    config.data_source_order.retain(|key| {
+        let valid = matches!(key.as_str(), "eastmoney" | "tencent")
+            || valid_external.contains(key.as_str());
+        valid && seen.insert(key.clone())
+    });
+    for source in &config.external_data_sources {
+        if seen.insert(source.id.clone()) {
+            config.data_source_order.insert(0, source.id.clone());
+        }
+    }
+    for key in ["eastmoney", "tencent"] {
+        if seen.insert(key.into()) {
+            config.data_source_order.push(key.into());
+        }
+    }
 }
 
 fn migrate_config(config: &mut AppConfig, from_version: u32) {
@@ -265,6 +477,9 @@ fn migrate_config(config: &mut AppConfig, from_version: u32) {
     }
     if from_version < 5 {
         // v5 adds the independent market-analysis schedule; serde supplies defaults.
+    }
+    if from_version < 6 {
+        // v6 adds extensible external data-source configuration.
     }
 }
 
@@ -378,6 +593,8 @@ pub(crate) fn default_config() -> AppConfig {
         market_analysis: MarketAnalysisConfig::default(),
         popup: PopupConfig::default(),
         appearance: AppearanceConfig::default(),
+        external_data_sources: Vec::new(),
+        data_source_order: crate::models::default_data_source_order(),
         display_fields: default_display_fields(),
         tooltip_fields: default_tooltip_fields(),
     }
@@ -406,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn market_state_expires_on_version_or_new_weekday() {
+    fn market_state_expires_on_version_but_waits_for_the_next_valid_trading_day() {
         let mut wrong_version = market_state("2026-07-10");
         wrong_version.algorithm_version = "old".into();
         assert!(normalize_market_state(wrong_version, "2026-07-10", true)
@@ -415,7 +632,7 @@ mod tests {
         assert!(
             normalize_market_state(market_state("2026-07-10"), "2026-07-13", true)
                 .current
-                .is_none()
+                .is_some()
         );
         assert!(
             normalize_market_state(market_state("2026-07-10"), "2026-07-12", false)
@@ -451,6 +668,31 @@ mod tests {
         config.background_refresh_interval_ms = 0;
         config.popup.auto_hide_ms = 42;
         config.market_analysis.refresh_minutes = 7;
+        config.external_data_sources = vec![
+            crate::models::ExternalDataSourceConfig {
+                id: "futu-main".into(),
+                provider: " FUTU_OPEND ".into(),
+                name: " ".into(),
+                host: " 550W ".into(),
+                port: 0,
+                enabled: true,
+            },
+            crate::models::ExternalDataSourceConfig {
+                id: "futu-main".into(),
+                provider: "futu_opend".into(),
+                name: "备用 OpenD".into(),
+                host: "127.0.0.1".into(),
+                port: 11111,
+                enabled: false,
+            },
+        ];
+        config.data_source_order = vec![
+            "tencent".into(),
+            "futu-main".into(),
+            "unknown".into(),
+            "eastmoney".into(),
+            "tencent".into(),
+        ];
 
         let normalized = normalize_config(config);
         assert_eq!(
@@ -466,6 +708,15 @@ mod tests {
         assert_eq!(normalized.background_refresh_interval_ms, 0);
         assert_eq!(normalized.popup.auto_hide_ms, 100);
         assert_eq!(normalized.market_analysis.refresh_minutes, 15);
+        assert_eq!(normalized.external_data_sources[0].provider, "futu_opend");
+        assert_eq!(normalized.external_data_sources[0].name, "富途 OpenD");
+        assert_eq!(normalized.external_data_sources[0].host, "550W");
+        assert_eq!(normalized.external_data_sources[0].port, 32179);
+        assert_eq!(normalized.external_data_sources[1].id, "futu-main-2");
+        assert_eq!(
+            normalized.data_source_order,
+            vec!["futu-main-2", "tencent", "futu-main", "eastmoney"]
+        );
         assert_eq!(normalize_auto_hide_ms(151), 200);
         assert_eq!(normalize_auto_hide_ms(30_001), 30_000);
     }

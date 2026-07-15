@@ -82,6 +82,9 @@ pub(crate) fn show_window(app: &AppHandle, label: &str) {
         let _ = window.show();
         let _ = window.set_focus();
         let _ = window.emit("stocktray-state", current_payload(app));
+        if label == "settings" {
+            let _ = window.emit("stocktray-open-page", "settings");
+        }
     }
 }
 

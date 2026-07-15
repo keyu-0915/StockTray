@@ -7,23 +7,33 @@ import {
   getState,
   hidePopup,
   onState,
+  onOpenPage,
   refreshMarketAnalysis,
+  clearMarketSnapshots,
+  clearMarketHistoryArchive,
+  deleteMarketHistoryDate,
+  getMarketStorageInfo,
   refreshQuotes,
   saveSettings,
   setPopupHovered,
   closeWindow,
   minimizeWindow,
   startWindowDragging,
+  testDataSource,
   toggleMaximizeWindow,
 } from "./tauri";
 import type {
   AppConfig,
   AppStatePayload,
   DailyPnlItem,
+  DataSourceTestResult,
+  ExternalDataSourceConfig,
   MarketContribution,
+  MarketStorageInfo,
   StockEntry,
   StyleAnalysis,
 } from "./types";
+import supportQr from "./assets/support-wechat-qr.png";
 import "./styles.css";
 
 type Page = "overview" | "holdings" | "market" | "settings";
@@ -91,7 +101,16 @@ const PAGES: Array<[Page, string]> = [
   ["market", "市场风格"],
   ["settings", "设置"],
 ];
-const SUPPORT_QR = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAADcAQMAAAAhlF3CAAAABlBMVEX///8AAABVwtN+AAAACXBIWXMAAA7EAAAOxAGVKw4bAAABnUlEQVRYhd2YPY6EMAyFH6KgzBE4yhwtHI2jcISUFAiPnx2yo13t9HYKJPOlcfzznADfVhWuEyjHuquJSa7Z/skRDdKf+VxaOejYBkzXfPLnmgyKPNb+2tD36hFEhWZ5GIeZEaI04CVbDQ17ANsq+395mwF6q2EJMm8r7ulPHwoCn1VovEToJ36vBNATVT9N40frxnwtZ3nMQBCgBRM62at0oWuWmqngJF3QGU5h3gJL6xGNBHUYudUwx7SdABpQeu3hzQMh3iaLWKuBdOiNJhbUAMq1WDIygjJZxxx5mwlqzZ0eziq2F4uMQ4gD1YQHkAKweUXST2+iaaCV3Dy2bpq3pg49qSNBG0bYTSgAOk5qczHZKz5OJoIjgkMdZoN2CLGgsOR0GPEatL2cjF0dEsHbLEJXBz+S4u8JkWBfTw+tPhkv3JAKVvP549I2PZdTIBqkdzabiF9mqHMcJ1c5ckF/QGimB3ok9+R564cQEforjz+NwCT8w89EsPWbTh8nvTyjQfRXnn6ZYW6OS3giOFoN1YEleONH0PPAb+sN9xiyThJMLToAAAAASUVORK5CYII=";
+
+function pageFromLocation(): Page {
+  const route = window.location.hash.replace(/^#\/?/, "");
+  return PAGES.some(([page]) => page === route) ? route as Page : "overview";
+}
+
+function isPage(value: string): value is Page {
+  return PAGES.some(([page]) => page === value);
+}
+const SUPPORT_QR = supportQr;
 
 function SlidingButtons<T extends string | number>({
   className = "",
@@ -285,7 +304,7 @@ function PopupApp() {
           <header>
             <div>
               <small>
-                市场风格 · {market?.status === "dominant" ? "当前主导" : market?.status === "proxy" ? "代理倾向" : "观察中"}
+                市场风格 · {market?.status === "dominant" ? "当前主导" : market?.status === "proxy" ? "代理倾向" : market?.status === "derived" ? market.quality.broad_index_received >= 3 ? "宽基+成分" : "成分推断" : market?.status === "auction" ? "竞价观察" : "观察中"}
               </small>
               <strong>{market?.leader_label ?? "等待分析"}</strong>
             </div>
@@ -349,7 +368,7 @@ function PopupRow({
 function DesktopApp() {
   const [state, setState] = useState<AppStatePayload | null>(null);
   const [draft, setDraft] = useState<AppConfig | null>(null);
-  const [page, setPage] = useState<Page>("overview");
+  const [page, setPage] = useState<Page>(pageFromLocation);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   useTheme(draft?.appearance.theme_mode);
@@ -367,10 +386,14 @@ function DesktopApp() {
       setState(payload);
       setDraft((current) => current ?? structuredClone(payload.config));
     });
+    const unlistenPage = onOpenPage((nextPage) => {
+      if (isPage(nextPage)) setPage(nextPage);
+    });
     return () => {
       delete document.body.dataset.view;
       delete document.documentElement.dataset.view;
       unlisten.then((fn) => fn()).catch(console.error);
+      unlistenPage.then((fn) => fn()).catch(console.error);
     };
   }, []);
 
@@ -477,7 +500,6 @@ function DesktopApp() {
             draft={draft}
             setDraft={setDraft}
             state={state}
-            setState={setState}
             setMessage={setMessage}
           />
         )}
@@ -518,7 +540,7 @@ function OverviewPage({ state }: { state: AppStatePayload }) {
           <div>
             <span>市场风格</span>
             <h2>
-              {market?.status === "dominant" ? "当前主导" : "当前倾向"}：
+              {market?.status === "dominant" ? "当前主导" : market?.status === "auction" ? "竞价观察" : "当前倾向"}：
               <em>{market?.leader_label ?? "等待分析"}</em>
             </h2>
           </div>
@@ -547,25 +569,7 @@ function OverviewPage({ state }: { state: AppStatePayload }) {
         />
         <HoldingsTable items={summary?.items.slice(0, 5) ?? []} />
       </section>
-      <section className="panel evidence overview-evidence">
-        <SectionTitle
-          title="盘中证据"
-          detail={`${state.market.history.length} 个快照 · 小登 / 中登 / 老登`}
-        />
-        {state.market.history.length ? (
-          <div>
-            {state.market.history.map((item) => (
-              <div className="evidence-item" key={item.time}>
-                <b>{item.time.slice(0, 5)}</b>
-                <span>{item.leader ? styleLabel(item.leader) : "均衡/观察"}</span>
-                <small>{item.scores.map((score) => score.toFixed(0)).join(" / ")}</small>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="empty">等待首个盘中快照</p>
-        )}
-      </section>
+      <StyleTrendPanel compact history={state.market.history} />
     </div>
   );
 }
@@ -883,9 +887,138 @@ function HoldingsPage({
   );
 }
 
+const STYLE_TREND_SERIES = [
+  { id: "young", label: "小登", index: 0 },
+  { id: "middle", label: "中登", index: 1 },
+  { id: "old", label: "老登", index: 2 },
+] as const;
+const MARKET_DAY_START = 9 * 60 + 30;
+const MARKET_DAY_END = 15 * 60;
+const MARKET_TIME_TICKS = ["09:30", "10:30", "11:30", "13:00", "14:00", "15:00"];
+
+function marketMinute(time: string) {
+  const [hour = 9, minute = 30] = time.split(":").map(Number);
+  return Math.max(MARKET_DAY_START, Math.min(MARKET_DAY_END, hour * 60 + minute));
+}
+
+function scoreDomain(history: AppStatePayload["market"]["history"]) {
+  const scores = history.flatMap((item) => item.scores.slice(0, 3)).filter(Number.isFinite);
+  if (!scores.length) return { min: 40, max: 60 };
+  const rawMin = Math.min(...scores);
+  const rawMax = Math.max(...scores);
+  const rawRange = Math.max(10, rawMax - rawMin);
+  let min = Math.max(0, Math.floor((rawMin - Math.max(3, rawRange * .18)) / 5) * 5);
+  let max = Math.min(100, Math.ceil((rawMax + Math.max(3, rawRange * .18)) / 5) * 5);
+  if (max - min < 10) {
+    min = Math.max(0, min - 5);
+    max = Math.min(100, max + 5);
+  }
+  return { min, max };
+}
+
+function StyleTrendPanel({
+  history,
+  compact = false,
+  children,
+}: {
+  history: AppStatePayload["market"]["history"];
+  compact?: boolean;
+  children?: React.ReactNode;
+}) {
+  const width = 720;
+  const height = compact ? 150 : 190;
+  const padding = { left: 34, right: 12, top: 12, bottom: 25 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const continuousHistory = history.filter((item) => item.phase !== "auction_final");
+  const auction = [...history].reverse().find((item) => item.phase === "auction_final");
+  const domain = scoreDomain(history);
+  const x = (time: string) => padding.left + (marketMinute(time) - MARKET_DAY_START) / (MARKET_DAY_END - MARKET_DAY_START) * chartWidth;
+  const y = (score: number) => padding.top + (domain.max - Math.max(domain.min, Math.min(domain.max, score))) / (domain.max - domain.min) * chartHeight;
+  const yTicks = Array.from({ length: 5 }, (_, index) => domain.min + (domain.max - domain.min) * index / 4);
+  const first = continuousHistory[0] ?? history[0];
+  const latest = continuousHistory[continuousHistory.length - 1] ?? history[history.length - 1];
+  const ranked = STYLE_TREND_SERIES
+    .map((series) => ({ ...series, score: latest?.scores[series.index] ?? 0 }))
+    .sort((a, b) => b.score - a.score);
+  const leaderGap = ranked.length > 1 ? ranked[0].score - ranked[1].score : 0;
+
+  return (
+    <section className={`panel style-trend-panel ${compact ? "compact" : ""}`}>
+      <SectionTitle
+        title="今日风格走势"
+        detail={history.length
+          ? `${history.length} 个快照 · ${ranked[0].label}当前领先 ${leaderGap.toFixed(1)} 分`
+          : "等待首个有效快照"}
+      />
+      {history.length ? (
+        <div className="style-trend-content">
+          <div className="style-trend-chart">
+            <svg aria-label="小登、中登、老登今日分数走势" role="img" viewBox={`0 0 ${width} ${height}`}>
+              <rect className="trend-lunch" x={x("11:30")} y={padding.top} width={x("13:00") - x("11:30")} height={chartHeight} />
+              <text className="trend-lunch-label" textAnchor="middle" x={(x("11:30") + x("13:00")) / 2} y={padding.top + 12}>午间休市</text>
+              {yTicks.map((score) => (
+                <g className={score <= 50 && score + (domain.max - domain.min) / 4 > 50 ? "trend-baseline" : ""} key={score}>
+                  <line x1={padding.left} x2={width - padding.right} y1={y(score)} y2={y(score)} />
+                  <text textAnchor="end" x={padding.left - 8} y={y(score) + 4}>{score.toFixed(0)}</text>
+                </g>
+              ))}
+              {STYLE_TREND_SERIES.map((series) => {
+                const sessions = [
+                  continuousHistory.filter((item) => marketMinute(item.time) <= 11 * 60 + 30),
+                  continuousHistory.filter((item) => marketMinute(item.time) >= 13 * 60),
+                ];
+                return (
+                  <g className={`trend-series ${series.id}`} key={series.id}>
+                    {sessions.map((items, sessionIndex) => (
+                      <polyline key={sessionIndex} points={items.map((item) => `${x(item.time)},${y(item.scores[series.index] ?? 0)}`).join(" ")} />
+                    ))}
+                    {continuousHistory.map((item, index) => (
+                      <circle cx={x(item.time)} cy={y(item.scores[series.index] ?? 0)} key={`${item.time}-${series.id}`} r={index === continuousHistory.length - 1 ? 4 : 2.5}>
+                        <title>{`${item.time.slice(0, 5)} ${series.label} ${(item.scores[series.index] ?? 0).toFixed(1)}`}</title>
+                      </circle>
+                    ))}
+                    {auction && (
+                      <rect className="trend-auction-point" height="7" width="7" x={x("09:30") - 3.5} y={y(auction.scores[series.index] ?? 0) - 3.5} transform={`rotate(45 ${x("09:30")} ${y(auction.scores[series.index] ?? 0)})`}>
+                        <title>{`竞价 ${series.label} ${(auction.scores[series.index] ?? 0).toFixed(1)}`}</title>
+                      </rect>
+                    )}
+                  </g>
+                );
+              })}
+              {MARKET_TIME_TICKS.map((time, index) => (
+                <text className="trend-time" key={time} textAnchor={index === 0 ? "start" : index === MARKET_TIME_TICKS.length - 1 ? "end" : "middle"} x={x(time)} y={height - 4}>
+                  {time}
+                </text>
+              ))}
+            </svg>
+          </div>
+          <div className="style-trend-legend">
+            {STYLE_TREND_SERIES.map((series) => {
+              const value = latest?.scores[series.index] ?? 0;
+              const change = value - (first?.scores[series.index] ?? value);
+              return (
+                <div className={series.id} key={series.id}>
+                  <i />
+                  <span><b>{series.label}</b><small>较首点 {signed(change, 1)}</small></span>
+                  <strong>{value.toFixed(0)}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="empty">首个有效行情快照生成后，将显示三类风格的日内变化曲线</p>
+      )}
+      {children}
+    </section>
+  );
+}
+
 function MarketPage({ state }: { state: AppStatePayload }) {
   const market = state.market.current;
   const [selectedStyleId, setSelectedStyleId] = useState<string | null>(null);
+  const [selectedSubsector, setSelectedSubsector] = useState<string | null>(null);
   if (!market)
     return (
       <section className="panel empty-state">
@@ -897,6 +1030,10 @@ function MarketPage({ state }: { state: AppStatePayload }) {
     market.styles.find((style) => style.id === selectedStyleId) ??
     market.styles.find((style) => style.id === market.leader) ??
     [...market.styles].sort((a, b) => b.score - a.score)[0];
+  const detailedContributions = selectedSubsector
+    ? (focusedStyle?.contributions ?? [...(focusedStyle?.positive ?? []), ...(focusedStyle?.negative ?? [])])
+        .filter((item) => item.subsector === selectedSubsector)
+    : [];
   return (
     <div className="stack market-page">
       <section className="market-headline">
@@ -906,6 +1043,12 @@ function MarketPage({ state }: { state: AppStatePayload }) {
               ? "当前主导"
               : market.status === "proxy"
                 ? "代理样本倾向"
+                : market.status === "derived"
+                  ? market.quality.broad_index_received >= 3
+                    ? "板块指数暂缺 · 宽基+成分推断"
+                    : "指数暂缺 · 成分推断"
+                : market.status === "auction"
+                  ? "竞价观察 · 不确认主导"
                 : market.status === "relative"
                   ? "相对占优 · 尚未形成主线"
                 : "当前状态"}
@@ -946,7 +1089,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
         <section className="panel">
           <SectionTitle
             title="贡献拆解"
-            detail={focusedStyle ? `${focusedStyle.label} → ${focusedStyle.subtitle}${market.quality.sample_source === "offline_proxy" ? " · 当前为离线替代样本" : ""}` : ""}
+            detail={focusedStyle ? `${focusedStyle.label} → ${focusedStyle.subtitle} · 流通市值有效 ${focusedStyle.float_cap_coverage.toFixed(1)}% · 点击细分查看全部样本${market.quality.sample_source === "offline_proxy" ? " · 当前为离线替代样本" : ""}` : ""}
           />
           {focusedStyle && (
             <div className="style-metrics">
@@ -959,13 +1102,13 @@ function MarketPage({ state }: { state: AppStatePayload }) {
                 value={`${focusedStyle.diffusion.toFixed(0)} / ${focusedStyle.entropy.toFixed(0)}`}
               />
               <Metric
-                label="市值权-等权"
+                label="资金权-等权"
                 value={signed(focusedStyle.weighting_divergence, 2, "%")}
               />
             </div>
           )}
           {focusedStyle?.subsectors.map((subsector) => (
-            <div className="subsector-row" key={subsector.id}>
+            <button aria-pressed={selectedSubsector === subsector.id} className="subsector-row" key={subsector.id} onClick={() => setSelectedSubsector(subsector.id)} type="button">
               <div>
                 <b>{subsectorLabel(subsector.name, market.quality.sample_source === "offline_proxy")}</b>
                 <small>上涨广度 {subsector.breadth.toFixed(0)}%</small>
@@ -976,7 +1119,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
               <strong className={tone(subsector.contribution)}>
                 {signed(subsector.contribution, 2)}
               </strong>
-            </div>
+            </button>
           ))}
         </section>
         <section className="panel">
@@ -1005,30 +1148,38 @@ function MarketPage({ state }: { state: AppStatePayload }) {
           </div>
         </section>
       </div>
-      <section className="panel evidence">
-        <SectionTitle
-          title="盘中证据"
-          detail={`指数 ${market.quality.index_received}/${market.quality.index_expected} · 宽基 ${market.quality.broad_index_received}/5 · 排除 ST ${market.quality.excluded_st} / 新股 ${market.quality.excluded_new} / 停牌 ${market.quality.excluded_halted}`}
-        />
-        <div>
-          {state.market.history.map((item) => (
-            <div className="evidence-item" key={item.time}>
-              <b>{item.time.slice(0, 5)}</b>
-              <span>{item.leader ? styleLabel(item.leader) : "均衡/观察"}</span>
-              <small>
-                {item.scores.map((score) => score.toFixed(0)).join(" / ")}
-              </small>
-            </div>
-          ))}
-        </div>
-        <p>
-          任一分类有效覆盖率低于80%、关键指数不足、时间戳缺失或盘中延迟超限时不输出结论；ST、新股和停牌不参与评分，涨跌停保留并标注。
-          {market.quality.index_error
+      <StyleTrendPanel history={state.market.history}>
+        <p className="trend-methodology">
+          主贡献按交易日冻结的前收盘自由流通市值加权，单股不超过10%、前五大合计不超过40%；等权结果仅用于观察上涨广度。任一分类有效覆盖率低于80%、流通市值有效率低于95%、关键指数不足、时间戳缺失或盘中延迟超限时不输出结论；ST、新股和停牌不参与评分，涨跌停保留并标注。
+          {market.quality.index_derived
+            ? market.quality.broad_index_received >= 3
+              ? " 独立板块指数暂不可用；宽基指数仍用于市场基准，风格方向由高覆盖率成分行情推断，不能视为板块指数确认。"
+              : " 独立指数暂不可用，当前结果使用高覆盖率成分行情推断，不能视为指数确认。"
+            : market.quality.index_cached
+              ? " 当前使用10分钟内的最近有效指数快照。"
+            : market.quality.index_error
             ? ` 指数错误：${market.quality.index_error}`
             : ""}{" "}
           结果不构成投资建议。
         </p>
-      </section>
+      </StyleTrendPanel>
+      {selectedSubsector && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedSubsector(null)}>
+          <section aria-labelledby="contribution-detail-title" aria-modal="true" className="contribution-modal" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+            <button className="modal-close" aria-label="关闭" onClick={() => setSelectedSubsector(null)}>×</button>
+            <header>
+              <span>{focusedStyle?.label} · 样本贡献明细</span>
+              <h2 id="contribution-detail-title">{subsectorLabel(selectedSubsector, market.quality.sample_source === "offline_proxy")}</h2>
+              <small>共 {detailedContributions.length} 条，按贡献值从高到低排列</small>
+            </header>
+            <div className="contribution-detail-list">
+              {detailedContributions.map((item) => (
+                <ContributionRow item={item} key={`${item.code}-${item.subsector}`} prefix={item.code} proxy={market.quality.sample_source === "offline_proxy"} />
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -1087,7 +1238,7 @@ function StyleCard({
       <footer>
         <span>变化 {signed(style.score_change, 1)}</span>
         <span>覆盖 {coverage.toFixed(1)}%</span>
-        <span>集中度 {style.concentration.toFixed(1)}%</span>
+        <span>前五权重 {style.top_five_weight.toFixed(1)}%</span>
       </footer>
     </article>
   );
@@ -1097,16 +1248,26 @@ function SettingsPage({
   draft,
   setDraft,
   state,
-  setState,
   setMessage,
 }: {
   draft: AppConfig;
   setDraft: React.Dispatch<React.SetStateAction<AppConfig | null>>;
   state: AppStatePayload;
-  setState: React.Dispatch<React.SetStateAction<AppStatePayload | null>>;
   setMessage: (value: string) => void;
 }) {
   const [coffeeOpen, setCoffeeOpen] = useState(false);
+  const [dataSourceEditor, setDataSourceEditor] = useState<ExternalDataSourceConfig | null>(null);
+  const [sourceTesting, setSourceTesting] = useState<string | null>(null);
+  const [sourceTests, setSourceTests] = useState<Record<string, DataSourceTestResult>>({});
+  const [draggingSource, setDraggingSource] = useState<string | null>(null);
+  const [storageInfo, setStorageInfo] = useState<MarketStorageInfo | null>(null);
+  const [storageBusy, setStorageBusy] = useState(false);
+  const sourceDrag = useRef<string | null>(null);
+  useEffect(() => {
+    getMarketStorageInfo()
+      .then(setStorageInfo)
+      .catch((error) => setMessage(`读取历史存储失败：${String(error)}`));
+  }, [state.market.current?.trading_date, state.market.history.length, setMessage]);
   const patch = (value: Partial<AppConfig>) =>
     setDraft((current) => current && { ...current, ...value });
   const appearance = (value: Partial<AppConfig["appearance"]>) =>
@@ -1122,39 +1283,82 @@ function SettingsPage({
       (current) =>
         current && { ...current, popup: { ...current.popup, ...value } },
     );
-  function showMock(leader: "young" | "middle" | "old") {
-    if (!state.market.current) {
-      setMessage("需要先获取一次市场行情，再应用演示场景");
+  function openNewDataSource() {
+    setDataSourceEditor({
+      id: `futu-opend-${Date.now()}`,
+      provider: "futu_opend",
+      name: "富途 OpenD",
+      host: "127.0.0.1",
+      port: 32179,
+      enabled: true,
+    });
+  }
+  function keepDataSource(source: ExternalDataSourceConfig) {
+    if (!source.name.trim() || !source.host.trim() || source.host.includes("://")) {
+      setMessage("请填写名称和有效的主机地址（不要包含 http://）");
       return;
     }
-    const scores = {
-      young: [86, 54, 31],
-      middle: [48, 83, 57],
-      old: [35, 51, 84],
-    }[leader];
-    const labels = { young: "小登", middle: "中登", old: "老登" };
-    const current = structuredClone(state.market.current);
-    current.leader = leader;
-    current.leader_label = labels[leader];
-    current.status = "dominant";
-    current.styles.forEach((style, index) => {
-      style.score_change = scores[index] - style.score;
-      style.score = scores[index];
-      style.state = style.id === leader ? "strong" : "neutral";
+    if (!Number.isInteger(source.port) || source.port < 1 || source.port > 65535) {
+      setMessage("端口必须在 1 到 65535 之间");
+      return;
+    }
+    setDraft((current) => {
+      if (!current) return current;
+      const exists = current.external_data_sources.some((item) => item.id === source.id);
+      return {
+        ...current,
+        external_data_sources: exists
+          ? current.external_data_sources.map((item) => item.id === source.id ? source : item)
+          : [...current.external_data_sources, source],
+        data_source_order: exists || current.data_source_order.includes(source.id)
+          ? current.data_source_order
+          : [source.id, ...current.data_source_order],
+      };
     });
-    setState({
-      ...state,
-      market: {
-        ...state.market,
-        current,
-        history: [
-          { time: "09:45:00", leader: "young", scores: [71, 55, 43] },
-          { time: "10:30:00", leader: "middle", scores: [62, 68, 49] },
-          { time: "13:30:00", leader, scores },
-        ],
-      },
+    setDataSourceEditor(null);
+    setMessage("数据源已加入草稿，请点击保存并应用");
+  }
+  function removeDataSource(id: string) {
+    setDraft((current) => current && ({
+      ...current,
+      external_data_sources: current.external_data_sources.filter((item) => item.id !== id),
+      data_source_order: current.data_source_order.filter((key) => key !== id),
+    }));
+    setSourceTests((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
     });
-    setMessage(`已载入${labels[leader]}演示数据（不会保存）`);
+    setMessage("数据源已从草稿移除，请点击保存并应用");
+  }
+  function reorderDataSource(sourceKey: string, targetKey: string) {
+    if (sourceKey === targetKey) return;
+    setDraft((current) => {
+      if (!current) return current;
+      const order = [...current.data_source_order];
+      const from = order.indexOf(sourceKey);
+      const to = order.indexOf(targetKey);
+      if (from < 0 || to < 0) return current;
+      const [moved] = order.splice(from, 1);
+      order.splice(to, 0, moved);
+      return { ...current, data_source_order: order };
+    });
+  }
+  async function testSource(source: ExternalDataSourceConfig, key = source.id) {
+    setSourceTesting(key);
+    try {
+      const result = await testDataSource(source);
+      setSourceTests((current) => ({ ...current, [key]: result }));
+      setMessage(`${source.name || "富途 OpenD"}：${result.message}${result.ok ? ` · ${result.latency_ms}ms` : ""}`);
+    } catch (error) {
+      setSourceTests((current) => ({
+        ...current,
+        [key]: { ok: false, latency_ms: 0, message: String(error) },
+      }));
+      setMessage(`连接测试失败：${String(error)}`);
+    } finally {
+      setSourceTesting(null);
+    }
   }
   async function update() {
     try {
@@ -1166,6 +1370,40 @@ function SettingsPage({
       );
     } catch (error) {
       setMessage(`检查更新失败：${String(error)}`);
+    }
+  }
+  async function clearSnapshots() {
+    if (!window.confirm("确定清除今天的市场风格快照和走势记录吗？此操作无法撤销。")) return;
+    try {
+      await clearMarketSnapshots();
+      setStorageInfo(await getMarketStorageInfo());
+      setMessage("今日市场风格快照已清除");
+    } catch (error) {
+      setMessage(`清除失败：${String(error)}`);
+    }
+  }
+  async function deleteStoredDay(tradingDate: string) {
+    if (!window.confirm(`确定删除 ${tradingDate} 的市场风格历史吗？此操作无法撤销。`)) return;
+    setStorageBusy(true);
+    try {
+      setStorageInfo(await deleteMarketHistoryDate(tradingDate));
+      setMessage(`${tradingDate} 的历史记录已删除`);
+    } catch (error) {
+      setMessage(`删除失败：${String(error)}`);
+    } finally {
+      setStorageBusy(false);
+    }
+  }
+  async function clearArchivedDays() {
+    if (!window.confirm("确定删除全部已归档交易日吗？今天的数据会保留，此操作无法撤销。")) return;
+    setStorageBusy(true);
+    try {
+      setStorageInfo(await clearMarketHistoryArchive());
+      setMessage("历史归档已清空，今日记录已保留");
+    } catch (error) {
+      setMessage(`清理失败：${String(error)}`);
+    } finally {
+      setStorageBusy(false);
     }
   }
   return (
@@ -1213,16 +1451,114 @@ function SettingsPage({
               onChange={(minutes) => patch({ market_analysis: { ...draft.market_analysis, refresh_minutes: minutes } })}
             />
           </SettingRow>
-          <div className="source-status">
-            <span>
-              <i />
-              东方财富 <b>主数据源</b>
-            </span>
-            <span>
-              <i />
-              腾讯行情 <b>备用</b>
-            </span>
+          <div className="source-toolbar">
+            <div>
+              <b>行情数据源</b>
+              <small>按顺序读取，失败时自动切换</small>
+            </div>
+            <button className="ghost" onClick={openNewDataSource} type="button">＋ 新增其他数据源</button>
           </div>
+          <div className="data-source-stack">
+            {draft.data_source_order.map((key) => {
+              const source = draft.external_data_sources.find((item) => item.id === key);
+              const isSystem = key === "eastmoney" || key === "tencent";
+              if (!source && !isSystem) return null;
+              const test = source ? sourceTests[source.id] : undefined;
+              const onPointerEnter = (event: React.PointerEvent<HTMLElement>) => {
+                const dragged = sourceDrag.current;
+                if (event.buttons !== 1) {
+                  sourceDrag.current = null;
+                  setDraggingSource(null);
+                } else if (dragged && dragged !== key) {
+                  reorderDataSource(dragged, key);
+                }
+              };
+              const finishDrag = () => {
+                sourceDrag.current = null;
+                setDraggingSource(null);
+              };
+              if (source) {
+                return (
+                  <article
+                    className={`data-source-card external ${source.enabled ? "enabled" : "disabled"} ${draggingSource === key ? "dragging" : ""}`}
+                    key={source.id}
+                    onPointerEnter={onPointerEnter}
+                    onPointerUp={finishDrag}
+                  >
+                    <i
+                      aria-label={`拖动调整 ${source.name} 的优先顺序`}
+                      className="source-drag-handle"
+                      onPointerDown={(event) => {
+                        event.preventDefault();
+                        sourceDrag.current = key;
+                        setDraggingSource(key);
+                      }}
+                    >⋮⋮</i>
+                    <span className={`source-provider-icon futu ${test?.ok ? "online" : ""}`}>F</span>
+                    <div className="external-source-copy">
+                      <div className="source-name-line">
+                        <b>{source.name || "富途 OpenD"}</b>
+                        <span className={`source-state-pill ${test?.ok ? "online" : source.enabled ? "ready" : "off"}`}>
+                          {test?.ok ? "连接正常" : source.enabled ? "已启用" : "已停用"}
+                        </span>
+                      </div>
+                      <small>OpenD · {source.host}:{source.port}</small>
+                    </div>
+                    <div className="source-card-role">
+                      <label className="switch" title="是否启用此数据源">
+                        <input
+                          aria-label={`启用 ${source.name}`}
+                          checked={source.enabled}
+                          onChange={(event) => setDraft((current) => current && ({
+                            ...current,
+                            external_data_sources: current.external_data_sources.map((item) => item.id === source.id ? { ...item, enabled: event.target.checked } : item),
+                          }))}
+                          type="checkbox"
+                        />
+                        <i />
+                      </label>
+                    </div>
+                    {test && <div className={`source-test-note ${test.ok ? "source-ok" : "source-error"}`}>{test.message}{test.ok ? ` · ${test.latency_ms}ms` : ""}</div>}
+                    <div className="external-source-actions">
+                      <button disabled={sourceTesting === source.id} onClick={() => testSource(source)} type="button">
+                        {sourceTesting === source.id ? "测试中" : "测试连接"}
+                      </button>
+                      <button onClick={() => setDataSourceEditor({ ...source })} type="button">编辑</button>
+                      <button className="danger" onClick={() => removeDataSource(source.id)} type="button">删除</button>
+                    </div>
+                  </article>
+                );
+              }
+              const eastmoney = key === "eastmoney";
+              return (
+                <article
+                  className={`data-source-card system enabled ${draggingSource === key ? "dragging" : ""}`}
+                  key={key}
+                  onPointerEnter={onPointerEnter}
+                  onPointerUp={finishDrag}
+                >
+                  <i
+                    aria-label={`拖动调整${eastmoney ? "东方财富" : "腾讯行情"}的优先顺序`}
+                    className="source-drag-handle"
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      sourceDrag.current = key;
+                      setDraggingSource(key);
+                    }}
+                  >⋮⋮</i>
+                  <span className={`source-provider-icon ${eastmoney ? "eastmoney" : "tencent"}`}>{eastmoney ? "东" : "腾"}</span>
+                  <div className="external-source-copy">
+                    <div className="source-name-line">
+                      <b>{eastmoney ? "东方财富" : "腾讯行情"}</b>
+                      <span className={`source-state-pill ${eastmoney ? "online" : "standby"}`}>{eastmoney ? "在线" : "备用"}</span>
+                    </div>
+                    <small>{eastmoney ? "A 股行情 · 板块成分与指数证据" : "A 股快照 · 宽基指数备用"}</small>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <p>按住卡片左侧拖动柄调整读取顺序；连接、握手或单个标的数据失败时，将继续尝试下一数据源。</p>
           <p>市场风格使用独立定时器，不影响托盘行情刷新。</p>
         </section>
         <section className="panel settings-card">
@@ -1332,29 +1668,39 @@ function SettingsPage({
           </SettingRow>
         </section>
         <section className="panel settings-card">
-          <SectionTitle title="数据与存储" />
-          <SettingRow label="当日快照">
-            <span>仅保存当前交易日</span>
-          </SettingRow>
-          <p>下一交易日首个有效行情到达后自动清除上一交易日数据。</p>
-          <button className="ghost" disabled>
-            清除今日快照
-          </button>
-        </section>
-        <section className="panel settings-card demo-card">
-          <SectionTitle title="功能演示" detail="仅修改当前界面，不保存" />
-          <SlidingButtons
-            options={[["young", "小登行情"], ["middle", "中登行情"], ["old", "老登行情"]]}
-            value={(state.market.current?.leader as "young" | "middle" | "old") ?? "middle"}
-            onChange={showMock}
-          />
+          <SectionTitle title="市场风格历史库" detail="默认长期保留" />
+          <div className="storage-summary">
+            <span><b>{storageInfo?.total_days ?? "—"}</b><small>交易日</small></span>
+            <span><b>{storageInfo?.trend_points ?? "—"}</b><small>趋势点</small></span>
+            <span><b>{formatStorageSize(storageInfo?.size_bytes ?? 0)}</b><small>本地占用</small></span>
+          </div>
+          <p>每天保留一份最终完整分析和全部盘中趋势点；新交易日会自动归档，不再删除旧数据。</p>
+          {storageInfo && storageInfo.days.length > 0 && (
+            <div className="storage-day-list">
+              {storageInfo.days.map((day) => (
+                <div key={day.trading_date}>
+                  <span>
+                    <b>{day.trading_date}</b>
+                    <small>{day.is_current ? "今日 · " : ""}{day.trend_points} 个趋势点{day.leader_label ? ` · ${day.leader_label}` : ""}</small>
+                  </span>
+                  {day.is_current
+                    ? <em>记录中</em>
+                    : <button disabled={storageBusy} onClick={() => deleteStoredDay(day.trading_date)} type="button">删除</button>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="storage-actions">
+            <button className="ghost" onClick={clearSnapshots} type="button">清除今日记录</button>
+            <button className="ghost danger" disabled={storageBusy || !storageInfo?.archived_days} onClick={clearArchivedDays} type="button">清空历史归档</button>
+          </div>
         </section>
         <section className="panel settings-card about-card">
           <SectionTitle title="关于 StockTray" detail={`v${state.app_version}`} />
           <p>轻量的 A 股托盘行情、持仓盈亏与市场风格分析工具。</p>
           <div className="release-notes">
             <b>本版本主要更新</b>
-            <span>市场风格分析与盘中证据</span>
+            <span>市场风格分析与今日风格走势</span>
             <span>全新主题、无边框窗口和交互动效</span>
             <span>持仓拖动排序与窄窗口适配</span>
           </div>
@@ -1364,6 +1710,90 @@ function SettingsPage({
           </div>
         </section>
       </div>
+      {dataSourceEditor && createPortal(
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setDataSourceEditor(null)}>
+          <section aria-labelledby="data-source-title" aria-modal="true" className="data-source-modal" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+            <button aria-label="关闭" className="modal-close" onClick={() => setDataSourceEditor(null)} type="button">×</button>
+            <header>
+              <span className="source-provider-icon">F</span>
+              <div>
+                <h2 id="data-source-title">配置富途 OpenD</h2>
+                <p>填写 OpenD 对客户端开放的主机和 API 端口。</p>
+              </div>
+            </header>
+            <form onSubmit={(event) => { event.preventDefault(); keepDataSource(dataSourceEditor); }}>
+              <label>
+                <span>数据源类型</span>
+                <select disabled value={dataSourceEditor.provider}>
+                  <option value="futu_opend">富途 OpenD</option>
+                </select>
+              </label>
+              <label>
+                <span>显示名称</span>
+                <input
+                  autoFocus
+                  maxLength={40}
+                  onChange={(event) => setDataSourceEditor((current) => current && ({ ...current, name: event.target.value }))}
+                  placeholder="例如：服务器 OpenD"
+                  value={dataSourceEditor.name}
+                />
+              </label>
+              <div className="data-source-address">
+                <label>
+                  <span>主机 / IP</span>
+                  <input
+                    onChange={(event) => setDataSourceEditor((current) => current && ({ ...current, host: event.target.value }))}
+                    placeholder="127.0.0.1 或服务器域名"
+                    spellCheck={false}
+                    value={dataSourceEditor.host}
+                  />
+                </label>
+                <label>
+                  <span>API 端口</span>
+                  <input
+                    max={65535}
+                    min={1}
+                    onChange={(event) => setDataSourceEditor((current) => current && ({ ...current, port: Number(event.target.value) }))}
+                    type="number"
+                    value={dataSourceEditor.port}
+                  />
+                </label>
+              </div>
+              <label className="data-source-enabled">
+                <span>
+                  <b>启用此配置</b>
+                  <small>保存并启用后，富途将成为行情刷新首选数据源</small>
+                </span>
+                <span className="switch">
+                  <input
+                    checked={dataSourceEditor.enabled}
+                    onChange={(event) => setDataSourceEditor((current) => current && ({ ...current, enabled: event.target.checked }))}
+                    type="checkbox"
+                  />
+                  <i />
+                </span>
+              </label>
+              <div className="data-source-hint">
+                <b>服务器安全提示</b>
+                <span>若 OpenD 仅绑定 127.0.0.1，请先建立 SSH 隧道，再填写 127.0.0.1:32179。无需在客户端填写富途账号或密码。</span>
+              </div>
+              {sourceTests.__editor && (
+                <div className={`data-source-test-result ${sourceTests.__editor.ok ? "ok" : "error"}`}>
+                  <b>{sourceTests.__editor.ok ? "端口可达" : "连接失败"}</b>
+                  <span>{sourceTests.__editor.message}{sourceTests.__editor.ok ? ` · ${sourceTests.__editor.latency_ms}ms` : ""}</span>
+                </div>
+              )}
+              <footer>
+                <button disabled={sourceTesting === "__editor"} onClick={() => testSource(dataSourceEditor, "__editor")} type="button">
+                  {sourceTesting === "__editor" ? "正在测试…" : "测试连接"}
+                </button>
+                <button className="primary" type="submit">添加到配置</button>
+              </footer>
+            </form>
+          </section>
+        </div>,
+        document.body,
+      )}
       {coffeeOpen && createPortal(
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setCoffeeOpen(false)}>
           <section aria-labelledby="coffee-title" aria-modal="true" className="coffee-modal" onMouseDown={(event) => event.stopPropagation()} role="dialog">
@@ -1481,9 +1911,12 @@ function ContributionRow({
     <div className="contribution-row">
       <div>
         <b>{item.name || item.code}</b>
-        <small title={`${prefix ? `${prefix} · ` : ""}${subsector} · ${item.reason}`}>
+        <small title={`${prefix ? `${prefix} · ` : ""}${subsector} · 权重 ${item.stock_weight_percent.toFixed(2)}% · 信号 ${signed(item.signal_score, 1)} · 贡献占比 ${item.contribution_share.toFixed(1)}%`}>
           {prefix ? `${prefix} · ` : ""}
-          {subsector} · {item.reason}
+          {subsector} · 权重 {item.stock_weight_percent.toFixed(2)}% · 贡献占比 {item.contribution_share.toFixed(1)}%
+        </small>
+        <small className="contribution-reason" title={`${item.reason} · 竞价 ${signed(item.gap_percent, 2, "%")} · 盘中 ${signed(item.intraday_percent, 2, "%")}`}>
+          信号 {signed(item.signal_score, 1)} · {item.reason}
         </small>
       </div>
       <span className={tone(item.contribution)}>
@@ -1510,7 +1943,7 @@ function styleLabel(id: string) {
   return id === "young" ? "小登" : id === "middle" ? "中登" : "老登";
 }
 function modeLabel(mode: string) {
-  return mode === "fallback" ? "部分备用源" : "完整行情";
+  return mode === "fallback" ? "部分备用源" : mode === "cached_index" ? "指数短时缓存" : mode === "derived_index" ? "宽基+成分推断" : "完整行情";
 }
 function sampleSourceLabel(source: string) {
   return source === "online_exact"
@@ -1539,6 +1972,11 @@ function marketStatusText(state: AppStatePayload) {
 }
 function autoHideLabel(milliseconds: number) {
   return milliseconds === 0 ? "关闭" : `${(milliseconds / 1000).toFixed(1)} 秒`;
+}
+function formatStorageSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 function holdingWinRate(items: DailyPnlItem[]) {
   if (!items.length) return "-";

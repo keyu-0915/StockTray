@@ -241,6 +241,109 @@ h3 {
   margin-top: 32px;
 }
 
+.market-style {
+  background:
+    radial-gradient(circle at 72% 10%, rgba(102, 209, 255, 0.13), transparent 36%),
+    #0e1216;
+}
+
+.market-style-intro p {
+  color: #c4cdd1;
+  font-size: 17px;
+}
+
+.method-list {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.method-list li {
+  border-left: 2px solid var(--accent);
+  padding: 8px 0 8px 14px;
+  color: #d8e0e3;
+}
+
+.style-showcase {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 38px;
+}
+
+.style-showcase article {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(34, 39, 43, 0.96), rgba(20, 24, 28, 0.96));
+}
+
+.style-showcase article.active {
+  border-color: rgba(102, 209, 255, 0.6);
+  box-shadow: 0 16px 44px rgba(55, 185, 236, 0.12);
+}
+
+.style-showcase span,
+.style-showcase strong {
+  display: block;
+}
+
+.style-showcase span {
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.style-showcase strong {
+  font-size: 24px;
+}
+
+.style-showcase p {
+  min-height: 52px;
+  color: var(--muted);
+}
+
+.style-showcase i {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.style-showcase i::before {
+  display: block;
+  width: var(--score);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  content: "";
+}
+
+.style-showcase .young i::before { background: var(--loss); }
+.style-showcase .old i::before { background: var(--gain); }
+
+.market-notes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.market-notes p {
+  margin: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.market-notes b { color: var(--text); }
+
 .feature-grid article,
 .timeline article,
 .faq-list details,
@@ -285,6 +388,10 @@ h3 {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
   gap: 24px;
   margin-top: 28px;
+}
+
+.screenshot-grid .market-preview {
+  grid-column: 1 / -1;
 }
 
 figure {
@@ -466,6 +573,11 @@ figcaption {
   .feature-grid,
   .timeline,
   .steps {
+    grid-template-columns: 1fr;
+  }
+
+  .style-showcase,
+  .market-notes {
     grid-template-columns: 1fr;
   }
 }

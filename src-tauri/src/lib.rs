@@ -6,6 +6,7 @@ use tauri_plugin_updater::UpdaterExt;
 use tokio::time::{sleep, timeout};
 
 mod config;
+mod futu;
 mod market;
 mod models;
 mod portfolio;
@@ -18,7 +19,7 @@ use config::*;
 use models::*;
 use portfolio::compute_daily_pnl;
 use quotes::{
-    fetch_index_quotes, fetch_quotes, fetch_quotes_detailed, fetch_stock_name, normalize_code,
+    fetch_index_quotes, fetch_quotes_detailed_with_config, fetch_stock_name, normalize_code,
 };
 use state::SharedState;
 use tray::{create_tray, update_tray_status};
@@ -34,6 +35,11 @@ pub fn run() {
             add_stock,
             refresh_quotes,
             refresh_market_analysis,
+            clear_market_snapshots,
+            get_market_storage_info,
+            delete_market_history_date,
+            clear_market_history_archive,
+            test_data_source,
             hide_popup,
             set_popup_hovered,
             control_settings_window,
@@ -72,7 +78,7 @@ pub fn run() {
                     .lock()
                     .map(|guard| guard.config.market_analysis.enabled)
                     .unwrap_or(false);
-                if enabled && is_market_trading_window() {
+                if enabled && market_clock_phase() != "closed" {
                     if let Err(err) = refresh_market_analysis_inner(&market_handle).await {
                         eprintln!("initial market analysis failed: {err}");
                     }
@@ -139,10 +145,14 @@ async fn add_stock(
         }
     }
 
-    let quote = fetch_quotes(std::slice::from_ref(&normalized))
+    let quote_config = {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        guard.config.clone()
+    };
+    let quote = fetch_quotes_detailed_with_config(std::slice::from_ref(&normalized), &quote_config)
         .await
         .ok()
-        .and_then(|mut quotes| quotes.pop())
+        .and_then(|mut result| result.quotes.pop())
         .filter(|quote| quote.error.is_empty());
     let name = if let Some(name) = quote
         .as_ref()
@@ -195,6 +205,99 @@ async fn refresh_market_analysis(app: AppHandle) -> Result<MarketSnapshot, Strin
         return Err("市场风格分析已关闭".to_string());
     }
     refresh_market_analysis_inner(&app).await
+}
+
+#[tauri::command]
+fn clear_market_snapshots(app: AppHandle) -> Result<(), String> {
+    let persisted = {
+        let state = app.state::<SharedState>();
+        let mut guard = state.0.lock().map_err(|error| error.to_string())?;
+        if let Some(trading_date) = guard
+            .market
+            .current
+            .as_ref()
+            .map(|snapshot| snapshot.trading_date.clone())
+        {
+            let _ = delete_market_history_day(&trading_date)?;
+        }
+        guard.market_engine.reset_intraday();
+        guard.market = MarketAnalysisState {
+            universe_size: guard.market_engine.members.len(),
+            sample_version: market::SAMPLE_VERSION.into(),
+            algorithm_version: market::ALGORITHM_VERSION.into(),
+            ..Default::default()
+        };
+        guard.market.clone()
+    };
+    save_market_state(&persisted)?;
+    emit_state_to_windows(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_market_storage_info(state: State<SharedState>) -> Result<MarketStorageInfo, String> {
+    let guard = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(market_storage_info(&guard.market))
+}
+
+#[tauri::command]
+fn delete_market_history_date(
+    app: AppHandle,
+    trading_date: String,
+) -> Result<MarketStorageInfo, String> {
+    let current = {
+        let state = app.state::<SharedState>();
+        let guard = state.0.lock().map_err(|error| error.to_string())?;
+        if guard
+            .market
+            .current
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.trading_date == trading_date)
+        {
+            return Err("当前交易日请使用“清除今日记录”".into());
+        }
+        guard.market.clone()
+    };
+    if !delete_market_history_day(trading_date.trim())? {
+        return Err("未找到该交易日记录".into());
+    }
+    Ok(market_storage_info(&current))
+}
+
+#[tauri::command]
+fn clear_market_history_archive(state: State<SharedState>) -> Result<MarketStorageInfo, String> {
+    clear_market_history()?;
+    let guard = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(market_storage_info(&guard.market))
+}
+
+#[tauri::command]
+async fn test_data_source(
+    source: ExternalDataSourceConfig,
+) -> Result<DataSourceTestResult, String> {
+    if !source.provider.trim().eq_ignore_ascii_case("futu_opend") {
+        return Err("暂不支持该数据源类型".into());
+    }
+    let host = source.host.trim();
+    if host.is_empty() || host.contains("://") || host.chars().any(char::is_whitespace) {
+        return Err("主机应填写 IP 或域名，不要包含协议和路径".into());
+    }
+    if source.port == 0 {
+        return Err("端口必须在 1 到 65535 之间".into());
+    }
+
+    Ok(match futu::test_connection(&source).await {
+        Ok((latency_ms, message)) => DataSourceTestResult {
+            ok: true,
+            latency_ms,
+            message,
+        },
+        Err(message) => DataSourceTestResult {
+            ok: false,
+            latency_ms: 0,
+            message,
+        },
+    })
 }
 
 async fn refresh_market_analysis_inner(app: &AppHandle) -> Result<MarketSnapshot, String> {
@@ -259,14 +362,26 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
             guard.market_engine = engine;
         }
     }
-    let (codes, refresh_minutes) = {
+    let mut engine = {
+        let mut guard = state.0.lock().map_err(|error| error.to_string())?;
+        std::mem::take(&mut guard.market_engine)
+    };
+    if let Err(error) = engine.refresh_universe_if_due().await {
+        eprintln!("scheduled market universe refresh deferred: {error}");
+    }
+    {
+        let mut guard = state.0.lock().map_err(|error| error.to_string())?;
+        guard.market_engine = engine;
+    }
+    let (codes, refresh_minutes, quote_config) = {
         let guard = state.0.lock().map_err(|error| error.to_string())?;
         (
             guard.market_engine.codes(),
             guard.config.market_analysis.refresh_minutes,
+            guard.config.clone(),
         )
     };
-    let mut fetched = fetch_quotes_detailed(&codes).await?;
+    let mut fetched = fetch_quotes_detailed_with_config(&codes, &quote_config).await?;
     match fetch_index_quotes(&market::index_secids()).await {
         Ok(quotes) => fetched.index_quotes = quotes,
         Err(error) => fetched.index_error = error,
@@ -283,13 +398,36 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
         }) || guard.market.sample_version != market::SAMPLE_VERSION
             || guard.market.algorithm_version != market::ALGORITHM_VERSION;
         if boundary_changed {
+            if previous.is_some() {
+                archive_market_day(&guard.market)?;
+            }
             guard.market.history.clear();
         }
-        if snapshot.quality.minimum_style_coverage >= 80.0 {
+        if should_persist_market_evidence(&snapshot) {
             let evidence = MarketEvidence {
                 time: snapshot.time.clone(),
+                phase: snapshot.phase.clone(),
+                sample_source: snapshot.quality.sample_source.clone(),
                 leader: snapshot.leader.clone(),
                 scores: snapshot.styles.iter().map(|style| style.score).collect(),
+                status: snapshot.status.clone(),
+                preferences: snapshot
+                    .styles
+                    .iter()
+                    .map(|style| style.preference)
+                    .collect(),
+                cap_weight_returns: snapshot
+                    .styles
+                    .iter()
+                    .map(|style| style.cap_weight_return)
+                    .collect(),
+                equal_weight_returns: snapshot
+                    .styles
+                    .iter()
+                    .map(|style| style.equal_weight_return)
+                    .collect(),
+                coverage: snapshot.quality.coverage,
+                minimum_style_coverage: snapshot.quality.minimum_style_coverage,
             };
             if let Some(last) = guard
                 .market
@@ -315,6 +453,14 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
     save_market_state(&persisted.1)?;
     emit_state_to_windows(app);
     Ok(persisted.0)
+}
+
+fn should_persist_market_evidence(snapshot: &MarketSnapshot) -> bool {
+    snapshot.quality.conclusion_ready
+        && matches!(
+            snapshot.phase.as_str(),
+            "auction_final" | "opening_observation" | "continuous"
+        )
 }
 
 #[tauri::command]
@@ -356,8 +502,8 @@ pub(crate) async fn refresh_quotes_inner(app: &AppHandle) -> Result<DailySummary
         .iter()
         .map(|s| s.code.clone())
         .collect::<Vec<_>>();
-    let quotes = match fetch_quotes(&codes).await {
-        Ok(quotes) => quotes,
+    let quotes = match fetch_quotes_detailed_with_config(&codes, &config).await {
+        Ok(result) => result.quotes,
         Err(err) => {
             record_refresh_error(app, &err);
             return Err(err);
@@ -472,7 +618,7 @@ async fn market_refresh_loop(app: AppHandle) {
     loop {
         sleep(Duration::from_secs(30)).await;
         expire_runtime_market_state(&app);
-        let (enabled, minutes, last_finished) = app
+        let (enabled, minutes, last_finished, last_phase) = app
             .state::<SharedState>()
             .0
             .lock()
@@ -481,13 +627,20 @@ async fn market_refresh_loop(app: AppHandle) {
                     guard.config.market_analysis.enabled,
                     guard.config.market_analysis.refresh_minutes,
                     guard.market_refresh_finished_at,
+                    guard
+                        .market
+                        .current
+                        .as_ref()
+                        .map(|snapshot| snapshot.phase.clone()),
                 )
             })
-            .unwrap_or((false, 15, None));
+            .unwrap_or((false, 15, None, None));
+        let phase = market_clock_phase();
         if !market_refresh_due(
             enabled,
-            is_market_trading_window(),
+            phase,
             last_finished.map(|finished| finished.elapsed()),
+            last_phase.as_deref(),
             minutes,
         ) {
             continue;
@@ -500,13 +653,15 @@ async fn market_refresh_loop(app: AppHandle) {
 
 fn market_refresh_due(
     enabled: bool,
-    in_trading_window: bool,
+    phase: &str,
     elapsed: Option<Duration>,
+    last_phase: Option<&str>,
     minutes: u32,
 ) -> bool {
     enabled
-        && in_trading_window
-        && elapsed.is_none_or(|elapsed| elapsed >= Duration::from_secs(minutes as u64 * 60))
+        && phase != "closed"
+        && (last_phase != Some(phase)
+            || elapsed.is_none_or(|elapsed| elapsed >= Duration::from_secs(minutes as u64 * 60)))
 }
 
 fn expire_runtime_market_state(app: &AppHandle) {
@@ -534,14 +689,20 @@ fn expire_runtime_market_state(app: &AppHandle) {
     }
 }
 
-fn is_market_trading_window() -> bool {
+fn market_clock_phase() -> &'static str {
     use chrono::{Datelike, Timelike};
     let now = chrono::Local::now();
     if now.weekday().number_from_monday() > 5 {
-        return false;
+        return "closed";
     }
     let minute = now.hour() * 60 + now.minute();
-    (570..=691).contains(&minute) || (780..=906).contains(&minute)
+    if (565..570).contains(&minute) {
+        "auction_final"
+    } else if (570..=691).contains(&minute) || (780..=906).contains(&minute) {
+        "continuous"
+    } else {
+        "closed"
+    }
 }
 
 fn current_refresh_interval_ms(app: &AppHandle) -> u32 {
@@ -600,19 +761,41 @@ mod tests {
 
     #[test]
     fn market_schedule_respects_enabled_window_and_configured_minutes() {
-        assert!(!market_refresh_due(true, false, None, 5));
+        assert!(!market_refresh_due(true, "closed", None, None, 5));
         assert!(!market_refresh_due(
             true,
-            true,
+            "continuous",
             Some(Duration::from_secs(299)),
+            Some("continuous"),
             5
         ));
         assert!(market_refresh_due(
             true,
-            true,
+            "continuous",
             Some(Duration::from_secs(300)),
+            Some("continuous"),
             5
         ));
-        assert!(!market_refresh_due(false, true, None, 30));
+        assert!(market_refresh_due(
+            true,
+            "continuous",
+            Some(Duration::from_secs(1)),
+            Some("auction_final"),
+            30
+        ));
+        assert!(!market_refresh_due(false, "continuous", None, None, 30));
+    }
+
+    #[test]
+    fn trend_history_requires_full_quality_and_a_supported_market_phase() {
+        let mut snapshot = MarketSnapshot {
+            phase: "continuous".into(),
+            ..Default::default()
+        };
+        assert!(!should_persist_market_evidence(&snapshot));
+        snapshot.quality.conclusion_ready = true;
+        assert!(should_persist_market_evidence(&snapshot));
+        snapshot.phase = "closed".into();
+        assert!(!should_persist_market_evidence(&snapshot));
     }
 }

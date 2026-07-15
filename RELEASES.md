@@ -1,5 +1,13 @@
 # StockTray Releases
 
+## 0.2.19 - Market style intelligence and local history
+
+- Rebuilt market-style analysis around independent young, middle, and old capital directions with exact samples, float-cap weighting, concentration controls, broad-index confirmation, and strict data-quality gates.
+- Added selectable contribution breakdowns, full-session intraday trend evidence, compact popup style status, clearer balance/rotation language, and detailed per-stock attribution.
+- Added ordered multi-source quote fallback with a configurable native Futu OpenD adapter and Linux Docker deployment files.
+- Added a persistent local market-style history library with per-day final snapshots, intraday evidence, algorithm/sample version traceability, storage statistics, and date-level deletion controls.
+- Refined the borderless Windows UI, responsive layouts, window controls, drag interactions, popup sizing/typography, themes, animations, auto-hide timing, and support QR experience.
+
 ## 0.2.18 - Precise market samples and compact popup
 
 - Replaced offline industry proxies with cached exact concept-board constituents when the online source is available.

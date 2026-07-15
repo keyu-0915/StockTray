@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { AppConfig, AppStatePayload, DailySummary, MarketSnapshot, UpdateCheckResult } from './types';
+import type { AppConfig, AppStatePayload, DailySummary, DataSourceTestResult, ExternalDataSourceConfig, MarketSnapshot, MarketStorageInfo, UpdateCheckResult } from './types';
 
 export async function getState(): Promise<AppStatePayload> {
   return invoke<AppStatePayload>('get_state');
@@ -12,6 +12,26 @@ export async function refreshQuotes(): Promise<DailySummary> {
 
 export async function refreshMarketAnalysis(): Promise<MarketSnapshot> {
   return invoke<MarketSnapshot>('refresh_market_analysis');
+}
+
+export async function clearMarketSnapshots(): Promise<void> {
+  return invoke<void>('clear_market_snapshots');
+}
+
+export async function getMarketStorageInfo(): Promise<MarketStorageInfo> {
+  return invoke<MarketStorageInfo>('get_market_storage_info');
+}
+
+export async function deleteMarketHistoryDate(tradingDate: string): Promise<MarketStorageInfo> {
+  return invoke<MarketStorageInfo>('delete_market_history_date', { tradingDate });
+}
+
+export async function clearMarketHistoryArchive(): Promise<MarketStorageInfo> {
+  return invoke<MarketStorageInfo>('clear_market_history_archive');
+}
+
+export async function testDataSource(source: ExternalDataSourceConfig): Promise<DataSourceTestResult> {
+  return invoke<DataSourceTestResult>('test_data_source', { source });
 }
 
 export async function checkAndInstallUpdate(): Promise<UpdateCheckResult> {
@@ -38,6 +58,10 @@ export function onState(callback: (state: AppStatePayload) => void) {
   return listen<AppStatePayload | null>('stocktray-state', (event) => {
     if (event.payload) callback(event.payload);
   });
+}
+
+export function onOpenPage(callback: (page: string) => void) {
+  return listen<string>('stocktray-open-page', (event) => callback(event.payload));
 }
 
 export function startWindowDragging() {

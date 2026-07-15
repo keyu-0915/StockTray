@@ -4,7 +4,8 @@ use encoding_rs::GBK;
 use regex::Regex;
 use reqwest::Client;
 
-use crate::models::StockData;
+use crate::futu;
+use crate::models::{AppConfig, StockData};
 
 const BATCH_SIZE: usize = 80;
 const BOARD_PAGE_SIZE: usize = 100;
@@ -24,15 +25,56 @@ pub(crate) async fn fetch_index_quotes(secids: &[String]) -> Result<Vec<StockDat
         return Ok(Vec::new());
     }
     let client = http_client()?;
-    let url = format!("https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f12,f14,f17,f18,f124&secids={}&_={}", secids.join(","), chrono::Utc::now().timestamp_millis());
-    let json: serde_json::Value = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| error.to_string())?
-        .json()
-        .await
-        .map_err(|error| error.to_string())?;
+    let mut last_error = String::new();
+    let mut payload = None;
+    for base in [
+        "https://push2.eastmoney.com",
+        "http://80.push2.eastmoney.com",
+        "http://82.push2.eastmoney.com",
+        "http://17.push2.eastmoney.com",
+        "http://29.push2.eastmoney.com",
+    ] {
+        let url = format!(
+            "{base}/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f4,f12,f14,f17,f18,f124&secids={}&_={}",
+            secids.join(","),
+            chrono::Utc::now().timestamp_millis()
+        );
+        match client.get(url).send().await {
+            Ok(response) => match response.json::<serde_json::Value>().await {
+                Ok(json) if json["data"]["diff"].is_array() => {
+                    payload = Some(json);
+                    break;
+                }
+                Ok(_) => last_error = "index quote has no data".into(),
+                Err(error) => last_error = error.to_string(),
+            },
+            Err(error) => last_error = error.to_string(),
+        }
+    }
+    let Some(json) = payload else {
+        let broad_codes = secids
+            .iter()
+            .filter_map(|secid| tencent_broad_index_code(secid))
+            .collect::<Vec<_>>();
+        let mut broad_quotes = fetch_tencent(&client, &broad_codes)
+            .await
+            .map_err(|fallback_error| {
+                format!(
+                    "all index endpoints failed: {last_error}; tencent broad fallback failed: {fallback_error}"
+                )
+            })?;
+        broad_quotes.retain(|quote| quote.error.is_empty());
+        for quote in &mut broad_quotes {
+            quote.code = format!("em:{}", &quote.code[2..]);
+            quote.source = "tencent_index".into();
+        }
+        if broad_quotes.is_empty() {
+            return Err(format!(
+                "all index endpoints failed: {last_error}; tencent broad fallback returned no data"
+            ));
+        }
+        return Ok(broad_quotes);
+    };
     let list = json["data"]["diff"]
         .as_array()
         .ok_or("index quote has no data")?;
@@ -59,61 +101,103 @@ pub(crate) async fn fetch_index_quotes(secids: &[String]) -> Result<Vec<StockDat
         .collect())
 }
 
+fn tencent_broad_index_code(secid: &str) -> Option<String> {
+    match secid {
+        "1.000001" | "1.000300" | "1.000688" => {
+            Some(format!("sh{}", secid.split('.').next_back()?))
+        }
+        "0.399001" | "0.399006" => Some(format!("sz{}", secid.split('.').next_back()?)),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct BoardMember {
     pub(crate) code: String,
     pub(crate) name: String,
+    pub(crate) float_market_cap: f64,
 }
 
-pub(crate) async fn fetch_quotes(codes: &[String]) -> Result<Vec<StockData>, String> {
-    Ok(fetch_quotes_detailed(codes).await?.quotes)
-}
-
-pub(crate) async fn fetch_quotes_detailed(codes: &[String]) -> Result<QuoteFetchResult, String> {
+pub(crate) async fn fetch_quotes_detailed_with_config(
+    codes: &[String],
+    config: &AppConfig,
+) -> Result<QuoteFetchResult, String> {
     if codes.is_empty() {
         return Ok(QuoteFetchResult::default());
     }
-    let client = http_client()?;
     let mut result = QuoteFetchResult::default();
-    let mut primary_available = true;
-    for batch in codes.chunks(BATCH_SIZE) {
-        let primary = if primary_available {
-            match fetch_eastmoney(&client, batch).await {
-                Ok(quotes) => quotes,
-                Err(_) => {
-                    primary_available = false;
-                    Vec::new()
+    let mut remaining = codes.to_vec();
+    let mut provider_index = 0_usize;
+    let mut client = None;
+    for key in &config.data_source_order {
+        let quotes = if key == "eastmoney" {
+            let http = match client.as_ref() {
+                Some(client) => client,
+                None => {
+                    client = Some(http_client()?);
+                    client.as_ref().expect("HTTP client was initialized")
+                }
+            };
+            let mut quotes = Vec::new();
+            for batch in remaining.chunks(BATCH_SIZE) {
+                if let Ok(batch_quotes) = fetch_eastmoney(http, batch).await {
+                    quotes.extend(batch_quotes);
                 }
             }
+            quotes
+        } else if key == "tencent" {
+            let http = match client.as_ref() {
+                Some(client) => client,
+                None => {
+                    client = Some(http_client()?);
+                    client.as_ref().expect("HTTP client was initialized")
+                }
+            };
+            let mut quotes = Vec::new();
+            for batch in remaining.chunks(BATCH_SIZE) {
+                if let Ok(batch_quotes) = fetch_tencent(http, batch).await {
+                    quotes.extend(batch_quotes);
+                }
+            }
+            quotes
+        } else if let Some(source) = config.external_data_sources.iter().find(|source| {
+            source.id == *key
+                && source.enabled
+                && source.provider.eq_ignore_ascii_case("futu_opend")
+        }) {
+            futu::fetch_quotes(source, &remaining)
+                .await
+                .unwrap_or_default()
         } else {
-            Vec::new()
+            continue;
         };
-        result.primary_count += primary.iter().filter(|q| q.error.is_empty()).count();
-        let missing = batch
-            .iter()
-            .filter(|code| {
-                !primary
-                    .iter()
-                    .any(|quote| quote.code.as_str() == code.as_str() && quote.error.is_empty())
-            })
-            .cloned()
+        let successful = quotes
+            .into_iter()
+            .filter(|quote| quote.error.is_empty() && remaining.contains(&quote.code))
             .collect::<Vec<_>>();
-        result.quotes.extend(primary);
-        if !missing.is_empty() {
-            let fallback = fetch_tencent(&client, &missing).await.unwrap_or_else(|_| {
-                missing
-                    .iter()
-                    .map(|code| StockData {
-                        code: code.clone(),
-                        error: "no_data".into(),
-                        ..Default::default()
-                    })
-                    .collect()
-            });
-            result.fallback_count += fallback.iter().filter(|q| q.error.is_empty()).count();
-            result.quotes.extend(fallback);
+        let successful_codes = successful
+            .iter()
+            .map(|quote| quote.code.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        if provider_index == 0 {
+            result.primary_count += successful.len();
+        } else {
+            result.fallback_count += successful.len();
+        }
+        remaining.retain(|code| !successful_codes.contains(code.as_str()));
+        result.quotes.extend(successful);
+        provider_index += 1;
+        if remaining.is_empty() {
+            break;
         }
     }
+    result
+        .quotes
+        .extend(remaining.into_iter().map(|code| StockData {
+            code,
+            error: "no_data".into(),
+            ..Default::default()
+        }));
     Ok(result)
 }
 
@@ -149,7 +233,7 @@ async fn fetch_board_page(
         "http://17.push2.eastmoney.com",
         "http://29.push2.eastmoney.com",
     ] {
-        let url = format!("{base}/api/qt/clist/get?pn={page}&pz={BOARD_PAGE_SIZE}&po=0&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f12&fs=b:{board}&fields=f12,f13,f14&_={}", chrono::Utc::now().timestamp_millis());
+        let url = format!("{base}/api/qt/clist/get?pn={page}&pz={BOARD_PAGE_SIZE}&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281&fltt=2&invt=2&fid=f21&fs=b:{board}&fields=f12,f13,f14,f21&_={}", chrono::Utc::now().timestamp_millis());
         match client.get(url).send().await {
             Ok(result) => match result.json::<serde_json::Value>().await {
                 Ok(json) => match parse_board_page(&json) {
@@ -180,6 +264,7 @@ fn parse_board_page(json: &serde_json::Value) -> Result<(Vec<BoardMember>, usize
             Some(BoardMember {
                 code: format!("{prefix}{number}"),
                 name: item["f14"].as_str().unwrap_or(number).to_string(),
+                float_market_cap: json_f64(item, "f21"),
             })
         })
         .collect::<Vec<_>>();
@@ -285,7 +370,7 @@ async fn fetch_eastmoney(client: &Client, codes: &[String]) -> Result<Vec<StockD
     }
 }
 
-fn theoretical_price_limits(code: &str, name: &str, prev_close: f32) -> (f32, f32) {
+pub(crate) fn theoretical_price_limits(code: &str, name: &str, prev_close: f32) -> (f32, f32) {
     if prev_close <= 0.0 || name.to_ascii_uppercase().contains("ST") {
         return (0.0, 0.0);
     }
@@ -503,6 +588,19 @@ mod tests {
     fn eastmoney_secid_maps_market_prefixes() {
         assert_eq!(eastmoney_secid("sh600519"), "1.600519");
         assert_eq!(eastmoney_secid("sz000001"), "0.000001");
+    }
+
+    #[test]
+    fn tencent_broad_index_fallback_maps_only_supported_indices() {
+        assert_eq!(
+            tencent_broad_index_code("1.000300"),
+            Some("sh000300".into())
+        );
+        assert_eq!(
+            tencent_broad_index_code("0.399006"),
+            Some("sz399006".into())
+        );
+        assert_eq!(tencent_broad_index_code("90.BK1127"), None);
     }
 
     #[test]

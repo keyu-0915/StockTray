@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="韭菜托盘 StockTray 是一个轻量 Windows 托盘股票行情工具，支持 A 股自选股、行情弹窗、托盘提示和持仓盈亏速览。"
+      content="韭菜托盘 StockTray 是一个轻量 Windows 托盘股票行情与市场风格分析工具，支持 A 股自选持仓、小登中登老登分析、贡献拆解、盘中趋势和本地历史。"
     />
     <title>韭菜托盘 StockTray - Windows 托盘股票行情工具</title>
     <link rel="stylesheet" href="site.css" />
@@ -18,6 +18,7 @@
       </a>
       <nav aria-label="主导航">
         <a href="#features">功能</a>
+        <a href="#market-style">市场风格</a>
         <a href="#screenshots">截图</a>
         <a href="#download">下载</a>
         <a href="#guide">使用</a>
@@ -32,7 +33,7 @@
           <p class="eyebrow">StockTray · Windows tray stock quote app</p>
           <h1 id="hero-title">韭菜托盘</h1>
           <p class="hero-copy">
-            一个安静待在 Windows 系统托盘里的 A 股行情小工具。需要时点一下，快速查看自选股、涨跌幅和持仓盈亏。
+            一个安静待在 Windows 系统托盘里的 A 股行情与市场风格工具。需要时点一下，快速查看持仓盈亏，以及小登、中登、老登谁更占优。
           </p>
           <div class="hero-actions">
             <a class="button primary" href="https://github.com/keyu-0915/StockTray/releases/latest">下载最新版</a>
@@ -56,7 +57,7 @@
       <section class="band" id="features" aria-labelledby="features-title">
         <div class="content">
           <p class="section-kicker">功能</p>
-          <h2 id="features-title">为托盘盯盘保留必要信息</h2>
+          <h2 id="features-title">从持仓速览到市场风格判断</h2>
           <div class="feature-grid">
             <article>
               <span class="feature-icon">01</span>
@@ -85,9 +86,63 @@
             </article>
             <article>
               <span class="feature-icon">06</span>
-              <h3>配置迁移</h3>
-              <p>旧版程序目录中的 config.json 会自动迁移到用户配置目录。</p>
+              <h3>市场风格</h3>
+              <p>独立评估小登、中登、老登，结合成分收益、宽基指数与数据质量输出倾向。</p>
             </article>
+            <article>
+              <span class="feature-icon">07</span>
+              <h3>贡献与趋势</h3>
+              <p>查看细分方向、成分股权重与贡献，并用全天时间轴追踪三类风格的盘中变化。</p>
+            </article>
+            <article>
+              <span class="feature-icon">08</span>
+              <h3>本地历史库</h3>
+              <p>按交易日长期归档最终分析和趋势点，在客户端统计占用并按日期管理。</p>
+            </article>
+            <article>
+              <span class="feature-icon">09</span>
+              <h3>多源自动降级</h3>
+              <p>按拖动顺序读取行情，支持东方财富、腾讯和自建富途 OpenD。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band market-style" id="market-style" aria-labelledby="market-style-title">
+        <div class="content">
+          <p class="section-kicker">市场风格</p>
+          <div class="two-column market-style-intro">
+            <div>
+              <h2 id="market-style-title">不是一条年龄轴，而是三类资金方向</h2>
+              <p>小登、中登、老登相互独立，又会竞争有限的市场资金。StockTray 同时观察绝对强弱和相对偏好，能够区分明确占优、共同走强、普遍偏弱与快速轮动。</p>
+            </div>
+            <ul class="method-list">
+              <li>精确成分样本与流通市值权重</li>
+              <li>单股和前五大权重集中度约束</li>
+              <li>宽基指数确认与严格质量门槛</li>
+              <li>细分方向、成分贡献和全天趋势</li>
+            </ul>
+          </div>
+          <div class="style-showcase" aria-label="小登中登老登市场风格示意">
+            <article class="young">
+              <span>小登</span><strong>AI 硬件</strong>
+              <p>半导体 · 算力基础设施 · 光通信</p>
+              <i style="--score: 68%"></i>
+            </article>
+            <article class="middle active">
+              <span>中登</span><strong>高弹性主题</strong>
+              <p>机器人 · 商业航天 · 游戏</p>
+              <i style="--score: 82%"></i>
+            </article>
+            <article class="old">
+              <span>老登</span><strong>大盘价值</strong>
+              <p>红利 · 金融 · 消费 · 能源</p>
+              <i style="--score: 59%"></i>
+            </article>
+          </div>
+          <div class="market-notes">
+            <p><b>可信才下结论。</b> 样本覆盖、时间戳或指数证据不足时，界面会明确显示数据不足，不用不完整行情强行判断。</p>
+            <p><b>数据留在本地。</b> 每个交易日保存最终完整分析、成分贡献、趋势点和算法版本，为后续跨日统计与回放保留基础。</p>
           </div>
         </div>
       </section>
@@ -97,6 +152,10 @@
           <p class="section-kicker">功能截图</p>
           <h2 id="screenshots-title">设置页与行情弹窗</h2>
           <div class="screenshot-grid">
+            <figure class="market-preview">
+              <img src="assets/readme-market-style.svg" alt="韭菜托盘市场风格分析截图" />
+              <figcaption>市场风格：独立评估小登、中登、老登，查看倾向、质量与全天趋势。</figcaption>
+            </figure>
             <figure>
               <img src="assets/readme-settings.svg" alt="韭菜托盘设置页截图" />
               <figcaption>设置页：管理自选股、指标、托盘提示和外观。</figcaption>
@@ -113,9 +172,9 @@
         <div class="content download-layout">
           <div>
             <p class="section-kicker">下载</p>
-            <h2 id="download-title">当前最新版本：v0.2.18</h2>
+          <h2 id="download-title">当前最新版本：v0.2.19</h2>
             <p>
-              Windows 安装包通过 GitHub Releases 发布。下载 <code>StockTray_0.2.18_x64-setup.exe</code> 后运行安装即可。
+              Windows 安装包通过 GitHub Releases 发布。下载 <code>StockTray_0.2.19_x64-setup.exe</code> 后运行安装即可。
             </p>
           </div>
           <div class="download-panel">
@@ -131,6 +190,11 @@
           <h2 id="changelog-title">最近版本</h2>
           <div class="timeline">
             <article>
+              <time>0.2.19</time>
+              <h3>市场风格智能与本地历史</h3>
+              <p>完善科学权重、质量门槛、贡献拆解和全天趋势，新增 OpenD 数据源与长期历史管理，并全面打磨 UI/UX。</p>
+            </article>
+            <article>
               <time>0.2.18</time>
               <h3>精确样本与紧凑弹窗</h3>
               <p>市场风格改用可缓存的精确概念板块成分，并优化相对占优状态、贡献说明和托盘弹窗布局。</p>
@@ -144,11 +208,6 @@
               <time>0.2.16</time>
               <h3>手动更新与显示精度</h3>
               <p>新增设置页手动检查更新、签名更新包和版本清单，并将价格与成本统一显示到三位小数。</p>
-            </article>
-            <article>
-              <time>0.2.15</time>
-              <h3>Reliable drag ordering</h3>
-              <p>改用基于 pointer 的自选股拖动排序，增强 Tauri WebView 可靠性，并强化发布脚本检查。</p>
             </article>
             <article>
               <time>0.2.14</time>
@@ -179,7 +238,7 @@
             </li>
             <li>
               <strong>快速查看行情</strong>
-              <span>左键托盘图标打开行情弹窗，鼠标悬停时弹窗会保持显示。</span>
+              <span>左键托盘图标打开弹窗，快速查看行情和紧凑市场风格卡片。</span>
             </li>
           </ol>
         </div>
@@ -196,7 +255,7 @@
             </details>
             <details>
               <summary>配置文件保存在哪里？</summary>
-              <p>默认保存到 `%APPDATA%\StockTray\config.json`。旧版程序目录配置会在启动时迁移。</p>
+              <p>默认保存在 `%APPDATA%\StockTray`。其中包含配置、当日市场快照和长期市场风格历史。</p>
             </details>
             <details>
               <summary>为什么弹窗里没有股票？</summary>

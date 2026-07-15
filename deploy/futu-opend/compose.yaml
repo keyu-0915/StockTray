@@ -1,0 +1,40 @@
+services:
+  futu-opend:
+    build:
+      context: .
+    image: stocktray/futu-opend:10.8.6818
+    container_name: stocktray-futu-opend
+    restart: unless-stopped
+    init: true
+    stdin_open: true
+    tty: true
+    environment:
+      FUTU_API_PORT: "32179"
+      FUTU_LOG_LEVEL: "info"
+      FUTU_AUTO_HOLD_QUOTE_RIGHT: "0"
+    secrets:
+      - futu_account
+      - futu_password_md5
+    ports:
+      - "${FUTU_BIND_IP:-127.0.0.1}:${FUTU_HOST_PORT:-32179}:32179"
+    volumes:
+      - futu_device:/home/futu/.com.futunn.FutuOpenD
+      - futu_data:/var/lib/futu-opend
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 32179"]
+      interval: 15s
+      timeout: 3s
+      retries: 8
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  futu_account:
+    file: ./secrets/futu_account
+  futu_password_md5:
+    file: ./secrets/futu_password_md5
+
+volumes:
+  futu_device:
+  futu_data:
