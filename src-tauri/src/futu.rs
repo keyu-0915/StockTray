@@ -280,10 +280,8 @@ pub(crate) async fn test_connection(
 fn security_from_code(code: &str) -> Option<Security> {
     let (market, number) = if let Some(number) = code.strip_prefix("sh") {
         (21, number)
-    } else if let Some(number) = code.strip_prefix("sz") {
-        (22, number)
     } else {
-        return None;
+        (22, code.strip_prefix("sz")?)
     };
     (number.len() == 6 && number.chars().all(|character| character.is_ascii_digit())).then(|| {
         Security {
