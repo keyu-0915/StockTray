@@ -20,6 +20,7 @@
 - Layout: hero, tray demo, workflow, market-style secondary section, data/privacy section, and final CTA retain clear hierarchy. No horizontal overflow at 390 px.
 - Color and materials: warm off-white background, ink text, restrained blue accent, subtle rules, and frosted tray popup match the selected direction.
 - Assets: visible product imagery uses real repository captures; no placeholder boxes, inline SVG, CSS illustration, emoji, or fake screenshots remain.
+- Brand: the website header, tray demo, footer, favicon, and README reuse the approved `ST` lettermark from `src-tauri/icons/icon.svg`.
 - Interaction: tray icon toggles the popup; the popup automatically hides after 1.5 seconds; hovering pauses hiding; primary navigation scrolls to its target.
 - Runtime: local page loads successfully with no browser warnings or errors.
 - Content: the tray workflow is the primary story. Market style is presented as a useful secondary capability rather than the product identity.

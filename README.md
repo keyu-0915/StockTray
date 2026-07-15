@@ -1,6 +1,8 @@
 <div align="center">
 
-# ST · StockTray
+<img src="src-tauri/icons/icon.svg" alt="StockTray Logo" width="112" />
+
+# StockTray
 
 ### 看一眼行情，然后继续工作。
 
