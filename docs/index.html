@@ -3,300 +3,182 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f3f1ec" />
     <meta
       name="description"
-      content="韭菜托盘 StockTray 是一个轻量 Windows 托盘股票行情与市场风格分析工具，支持 A 股自选持仓、小登中登老登分析、贡献拆解、盘中趋势和本地历史。"
+      content="StockTray 是一款安静待在 Windows 系统托盘里的 A 股行情工具。点开看一眼自选、持仓盈亏和市场方向，然后继续工作。"
     />
-    <title>韭菜托盘 StockTray - Windows 托盘股票行情工具</title>
+    <meta property="og:title" content="StockTray - 看一眼行情，然后继续工作" />
+    <meta property="og:description" content="低打扰的 Windows 托盘看盘工具，支持持仓盈亏、市场风格、多数据源与本地历史。" />
+    <title>StockTray - Windows 托盘看盘工具</title>
     <link rel="stylesheet" href="site.css" />
+    <script src="site.js" defer></script>
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="韭菜托盘首页">
-        <span class="brand-mark">韭</span>
-        <span>韭菜托盘</span>
+      <a class="brand" href="#top" aria-label="StockTray 首页">
+        <span class="brand-mark">ST</span>
+        <span>StockTray</span>
       </a>
       <nav aria-label="主导航">
-        <a href="#features">功能</a>
-        <a href="#market-style">市场风格</a>
-        <a href="#screenshots">截图</a>
-        <a href="#download">下载</a>
-        <a href="#guide">使用</a>
-        <a href="#privacy">隐私</a>
+        <a href="#workflow">托盘体验</a>
+        <a href="#market">市场风格</a>
+        <a href="#trust">数据与隐私</a>
+        <a href="https://github.com/keyu-0915/StockTray/releases/latest">下载</a>
+        <a href="https://github.com/keyu-0915/StockTray">GitHub</a>
       </nav>
     </header>
 
     <main id="top">
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-backdrop" role="img" aria-label="韭菜托盘设置页界面截图"></div>
-        <div class="hero-overlay">
-          <p class="eyebrow">StockTray · Windows tray stock quote app</p>
-          <h1 id="hero-title">韭菜托盘</h1>
-          <p class="hero-copy">
-            一个安静待在 Windows 系统托盘里的 A 股行情与市场风格工具。需要时点一下，快速查看持仓盈亏，以及小登、中登、老登谁更占优。
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Windows 托盘里的 A 股行情助手</p>
+          <h1>看一眼行情，<br />然后继续工作。</h1>
+          <p class="lead">
+            StockTray 安静待在系统托盘。点击出现，移开自动隐藏；<br class="desktop-only" />
+            不用切换页面，也不占用你的桌面。
           </p>
           <div class="hero-actions">
-            <a class="button primary" href="https://github.com/keyu-0915/StockTray/releases/latest">下载最新版</a>
-            <a class="button secondary" href="https://github.com/keyu-0915/StockTray">查看源码</a>
+            <a class="button primary" href="https://github.com/keyu-0915/StockTray/releases/latest">下载 Windows 版</a>
+            <a class="button secondary" href="https://github.com/keyu-0915/StockTray">查看 GitHub</a>
           </div>
+          <p class="version">v0.2.19 · 免费 · 开源 · 数据留在本机</p>
         </div>
-      </section>
 
-      <section class="band intro" aria-labelledby="intro-title">
-        <div class="content two-column">
-          <div>
-            <p class="section-kicker">软件介绍</p>
-            <h2 id="intro-title">轻量、常驻、少打扰的股票行情入口</h2>
-          </div>
-          <p>
-            韭菜托盘 StockTray 不试图替代完整证券交易终端。它把常用行情信息收在托盘里，平时不占桌面空间，打开弹窗后用紧凑的 Windows 11 风格界面展示价格、涨跌幅、成交指标、当日盈亏和持仓盈亏。
-          </p>
-        </div>
-      </section>
-
-      <section class="band" id="features" aria-labelledby="features-title">
-        <div class="content">
-          <p class="section-kicker">功能</p>
-          <h2 id="features-title">从持仓速览到市场风格判断</h2>
-          <div class="feature-grid">
-            <article>
-              <span class="feature-icon">01</span>
-              <h3>托盘常驻</h3>
-              <p>启动后常驻系统托盘，左键打开或关闭行情弹窗，右键进入菜单。</p>
-            </article>
-            <article>
-              <span class="feature-icon">02</span>
-              <h3>行情弹窗</h3>
-              <p>弹窗支持透明背景、圆角、自动消失和鼠标悬停保持，适合快速扫一眼。</p>
-            </article>
-            <article>
-              <span class="feature-icon">03</span>
-              <h3>自选股管理</h3>
-              <p>可配置股票代码、持仓、成本、弹窗显示和托盘提示显示。</p>
-            </article>
-            <article>
-              <span class="feature-icon">04</span>
-              <h3>盈亏速览</h3>
-              <p>托盘状态色会根据总持仓盈亏变化，弹窗中可显示当日和持仓盈亏。</p>
-            </article>
-            <article>
-              <span class="feature-icon">05</span>
-              <h3>指标可选</h3>
-              <p>支持价格、涨跌额、涨跌幅、成交量、成交额、量比、换手率等字段。</p>
-            </article>
-            <article>
-              <span class="feature-icon">06</span>
-              <h3>市场风格</h3>
-              <p>独立评估小登、中登、老登，结合成分收益、宽基指数与数据质量输出倾向。</p>
-            </article>
-            <article>
-              <span class="feature-icon">07</span>
-              <h3>贡献与趋势</h3>
-              <p>查看细分方向、成分股权重与贡献，并用全天时间轴追踪三类风格的盘中变化。</p>
-            </article>
-            <article>
-              <span class="feature-icon">08</span>
-              <h3>本地历史库</h3>
-              <p>按交易日长期归档最终分析和趋势点，在客户端统计占用并按日期管理。</p>
-            </article>
-            <article>
-              <span class="feature-icon">09</span>
-              <h3>多源自动降级</h3>
-              <p>按拖动顺序读取行情，支持东方财富、腾讯和自建富途 OpenD。</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section class="band market-style" id="market-style" aria-labelledby="market-style-title">
-        <div class="content">
-          <p class="section-kicker">市场风格</p>
-          <div class="two-column market-style-intro">
-            <div>
-              <h2 id="market-style-title">不是一条年龄轴，而是三类资金方向</h2>
-              <p>小登、中登、老登相互独立，又会竞争有限的市场资金。StockTray 同时观察绝对强弱和相对偏好，能够区分明确占优、共同走强、普遍偏弱与快速轮动。</p>
+        <div class="hero-demo" aria-label="StockTray 托盘弹窗交互演示">
+          <div class="demo-state state-visible"><span></span>出现</div>
+          <div class="demo-state state-hidden"><span></span>隐藏</div>
+          <div class="popup-shell" id="popup-demo">
+            <div class="popup-summary">
+              <div>
+                <span>今日偏向</span>
+                <strong>中登 · 轮动活跃</strong>
+              </div>
+              <time>10:25</time>
             </div>
-            <ul class="method-list">
-              <li>精确成分样本与流通市值权重</li>
-              <li>单股和前五大权重集中度约束</li>
-              <li>宽基指数确认与严格质量门槛</li>
-              <li>细分方向、成分贡献和全天趋势</li>
-            </ul>
+            <div class="quote-head">
+              <span>名称 / 代码</span><span>最新价</span><span>涨跌幅</span><span>当日盈亏</span>
+            </div>
+            <div class="quote-row">
+              <div><strong>贵州茅台</strong><span>600519</span></div>
+              <b>1,468.30</b><b class="down">-0.42%</b><b class="down">-7.13</b>
+            </div>
+            <div class="quote-row">
+              <div><strong>宁德时代</strong><span>300750</span></div>
+              <b>202.88</b><b class="up">+1.25%</b><b class="up">+15.34</b>
+            </div>
+            <p class="auto-hide">鼠标移开 <span id="hide-seconds">1.5</span>s 后隐藏</p>
           </div>
-          <div class="style-showcase" aria-label="小登中登老登市场风格示意">
-            <article class="young">
-              <span>小登</span><strong>AI 硬件</strong>
-              <p>半导体 · 算力基础设施 · 光通信</p>
-              <i style="--score: 68%"></i>
-            </article>
-            <article class="middle active">
-              <span>中登</span><strong>高弹性主题</strong>
-              <p>机器人 · 商业航天 · 游戏</p>
-              <i style="--score: 82%"></i>
-            </article>
-            <article class="old">
-              <span>老登</span><strong>大盘价值</strong>
-              <p>红利 · 金融 · 消费 · 能源</p>
-              <i style="--score: 59%"></i>
-            </article>
+
+          <div class="taskbar" aria-label="Windows 系统托盘演示">
+            <button class="tray-button active" id="tray-toggle" type="button" aria-label="打开或隐藏 StockTray 弹窗" aria-expanded="true">ST</button>
+            <span class="tray-item">网络</span>
+            <span class="tray-item">声音</span>
+            <span class="tray-language">中</span>
+            <span class="tray-clock">10:25<small>2024/05/20</small></span>
           </div>
-          <div class="market-notes">
-            <p><b>可信才下结论。</b> 样本覆盖、时间戳或指数证据不足时，界面会明确显示数据不足，不用不完整行情强行判断。</p>
-            <p><b>数据留在本地。</b> 每个交易日保存最终完整分析、成分贡献、趋势点和算法版本，为后续跨日统计与回放保留基础。</p>
-          </div>
+          <p class="demo-caption">点击 ST 托盘图标试试：出现、看完、自动隐藏。</p>
         </div>
       </section>
 
-      <section class="band screenshots" id="screenshots" aria-labelledby="screenshots-title">
-        <div class="content">
-          <p class="section-kicker">功能截图</p>
-          <h2 id="screenshots-title">设置页与行情弹窗</h2>
-          <div class="screenshot-grid">
-            <figure class="market-preview">
-              <img src="assets/readme-market-style.svg" alt="韭菜托盘市场风格分析截图" />
-              <figcaption>市场风格：独立评估小登、中登、老登，查看倾向、质量与全天趋势。</figcaption>
-            </figure>
-            <figure>
-              <img src="assets/readme-settings.svg" alt="韭菜托盘设置页截图" />
-              <figcaption>设置页：管理自选股、指标、托盘提示和外观。</figcaption>
-            </figure>
-            <figure>
-              <img src="assets/readme-popup.svg" alt="韭菜托盘行情弹窗截图" />
-              <figcaption>行情弹窗：展示自选股实时价格、涨跌和盈亏信息。</figcaption>
-            </figure>
-          </div>
+      <section class="glance" id="workflow" aria-labelledby="workflow-title">
+        <div class="section-heading">
+          <p class="section-index">01 / TRAY WORKFLOW</p>
+          <h2 id="workflow-title">三秒完成一次查看</h2>
+          <p>打开快、看得全、藏得快，不打断当前工作流。</p>
         </div>
-      </section>
-
-      <section class="band download" id="download" aria-labelledby="download-title">
-        <div class="content download-layout">
-          <div>
-            <p class="section-kicker">下载</p>
-          <h2 id="download-title">当前最新版本：v0.2.19</h2>
-            <p>
-              Windows 安装包通过 GitHub Releases 发布。下载 <code>StockTray_0.2.19_x64-setup.exe</code> 后运行安装即可。
-            </p>
-          </div>
-          <div class="download-panel">
-            <a class="button primary wide" href="https://github.com/keyu-0915/StockTray/releases/latest">前往 GitHub Releases</a>
-            <p>平台：Windows 10/11 · 架构：x64 · 打包：Tauri 2 + NSIS</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="band" id="changelog" aria-labelledby="changelog-title">
-        <div class="content">
-          <p class="section-kicker">更新日志</p>
-          <h2 id="changelog-title">最近版本</h2>
-          <div class="timeline">
-            <article>
-              <time>0.2.19</time>
-              <h3>市场风格智能与本地历史</h3>
-              <p>完善科学权重、质量门槛、贡献拆解和全天趋势，新增 OpenD 数据源与长期历史管理，并全面打磨 UI/UX。</p>
-            </article>
-            <article>
-              <time>0.2.18</time>
-              <h3>精确样本与紧凑弹窗</h3>
-              <p>市场风格改用可缓存的精确概念板块成分，并优化相对占优状态、贡献说明和托盘弹窗布局。</p>
-            </article>
-            <article>
-              <time>0.2.17</time>
-              <h3>市场风格与全新界面</h3>
-              <p>新增小登、中登、老登风格分析、盘中证据、滑动单选交互、主题系统、持仓拖动排序与全新 ST 图标。</p>
-            </article>
-            <article>
-              <time>0.2.16</time>
-              <h3>手动更新与显示精度</h3>
-              <p>新增设置页手动检查更新、签名更新包和版本清单，并将价格与成本统一显示到三位小数。</p>
-            </article>
-            <article>
-              <time>0.2.14</time>
-              <h3>Drag ordering</h3>
-              <p>新增自选股拖拽排序和拖动目标高亮，保留上移、下移和排序按钮。</p>
-            </article>
-          </div>
-          <a class="text-link" href="https://github.com/keyu-0915/StockTray/blob/main/RELEASES.md">查看完整版本记录</a>
-        </div>
-      </section>
-
-      <section class="band guide" id="guide" aria-labelledby="guide-title">
-        <div class="content">
-          <p class="section-kicker">使用说明</p>
-          <h2 id="guide-title">安装后从系统托盘开始使用</h2>
-          <ol class="steps">
-            <li>
-              <strong>安装并启动</strong>
-              <span>运行安装包，启动后韭菜托盘会出现在 Windows 系统托盘。</span>
-            </li>
-            <li>
-              <strong>添加自选股</strong>
-              <span>打开设置页，输入股票代码、持仓和成本，保存后开始刷新行情。</span>
-            </li>
-            <li>
-              <strong>配置显示字段</strong>
-              <span>选择弹窗和托盘提示中要显示的价格、涨跌、成交和盈亏指标。</span>
-            </li>
-            <li>
-              <strong>快速查看行情</strong>
-              <span>左键托盘图标打开弹窗，快速查看行情和紧凑市场风格卡片。</span>
-            </li>
-          </ol>
-        </div>
-      </section>
-
-      <section class="band faq" id="faq" aria-labelledby="faq-title">
-        <div class="content">
-          <p class="section-kicker">常见问题</p>
-          <h2 id="faq-title">FAQ</h2>
-          <div class="faq-list">
-            <details>
-              <summary>韭菜托盘是交易软件吗？</summary>
-              <p>不是。它只用于个人行情查看和持仓盈亏速览，不提供交易能力，也不构成投资建议。</p>
-            </details>
-            <details>
-              <summary>配置文件保存在哪里？</summary>
-              <p>默认保存在 `%APPDATA%\StockTray`。其中包含配置、当日市场快照和长期市场风格历史。</p>
-            </details>
-            <details>
-              <summary>为什么弹窗里没有股票？</summary>
-              <p>请先在设置页添加自选股，并确认对应股票勾选了“弹窗”显示。</p>
-            </details>
-            <details>
-              <summary>可以商用或二次分发吗？</summary>
-              <p>可以，但项目采用 GPL-3.0-or-later。分发修改版或衍生版本时，需要遵守 GPL 的源码开放和再分发条款。</p>
-            </details>
-          </div>
-        </div>
-      </section>
-
-      <section class="band legal" id="privacy" aria-labelledby="privacy-title">
-        <div class="content legal-grid">
+        <div class="glance-steps">
           <article>
-            <p class="section-kicker">隐私说明</p>
-            <h2 id="privacy-title">本地配置，不做账号体系</h2>
-            <p>
-              韭菜托盘不提供注册登录功能。自选股、持仓、成本和显示偏好保存在本机配置文件中。应用会为了获取行情访问公开行情接口，不会把你的本地配置上传到本项目服务器。
-            </p>
-            <p>
-              请注意，行情接口提供方可能会看到网络请求所需的基础信息，例如 IP 地址和请求时间。
-            </p>
+            <span>1</span>
+            <div><h3>托盘图标</h3><p>安静常驻，行情与盈亏状态随时可见。</p></div>
           </article>
-          <article id="license">
-            <p class="section-kicker">开源协议</p>
-            <h2>GPL-3.0-or-later</h2>
-            <p>
-              韭菜托盘使用 GNU General Public License v3.0 or later 授权。你可以自由使用、复制、分发和修改；如果分发修改版或衍生版本，需要继续遵守 GPL 并保留相同的自由软件授权。
-            </p>
-            <a class="text-link" href="https://github.com/keyu-0915/StockTray/blob/main/LICENSE">查看完整许可证</a>
+          <article>
+            <span>2</span>
+            <div><h3>两只股票</h3><p>价格、涨跌幅与当日盈亏，一眼看完。</p></div>
+          </article>
+          <article>
+            <span>3</span>
+            <div><h3>自动隐藏</h3><p>鼠标移开后收回托盘，继续手上的事。</p></div>
           </article>
         </div>
+      </section>
+
+      <section class="details band">
+        <div class="section-heading narrow">
+          <p class="section-index">02 / ONE GLANCE</p>
+          <h2>少切一个窗口，<br />多留一点专注。</h2>
+        </div>
+        <div class="detail-grid">
+          <article class="detail-large">
+            <p class="label">自选与持仓</p>
+            <h3>你关心的数字，排在同一行。</h3>
+            <p>自由选择最新价、涨跌幅、量比、换手率、持仓盈亏等字段。弹窗只完整显示两只股票，其余向下滚动，不用把窗口撑满屏幕。</p>
+            <div class="mini-table">
+              <div><span>贵州茅台 <small>600519</small></span><b>1,468.30</b><b class="down">-0.42%</b></div>
+              <div><span>宁德时代 <small>300750</small></span><b>202.88</b><b class="up">+1.25%</b></div>
+            </div>
+          </article>
+          <article>
+            <p class="label">轻量交互</p>
+            <h3>透明度、圆角、隐藏时间，都按你习惯。</h3>
+            <p>支持悬停保持、0.1 秒颗粒度自动隐藏和紧凑布局。需要时出现，不需要时安静消失。</p>
+          </article>
+          <article>
+            <p class="label">动态托盘</p>
+            <h3>不用点开，也知道今天赚还是亏。</h3>
+            <p>托盘图标跟随总持仓盈亏改变状态，左键看行情，右键进入功能菜单。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="market band" id="market" aria-labelledby="market-title">
+        <div class="market-intro">
+          <p class="section-index">03 / MARKET STYLE</p>
+          <h2 id="market-title">看完价格，<br />再多懂一步。</h2>
+          <p>市场风格不是产品的负担，而是托盘里顺手多看的一层判断：今天是谁在拉升，资金又在往哪里轮动。</p>
+        </div>
+        <div class="market-board">
+          <div class="market-legend">
+            <span class="young">小登</span><span class="middle">中登</span><span class="old">老登</span>
+          </div>
+          <figure class="market-visual">
+            <img src="assets/readme-market-style.svg" alt="StockTray 市场风格分析页，展示小登、中登、老登趋势与贡献拆解" />
+            <figcaption>完整页面可点击三类风格，查看贡献拆解、细分成分与全天走势。</figcaption>
+          </figure>
+          <div class="market-bottom">
+            <div><span>当前倾向</span><strong>中登占优</strong></div>
+            <div><span>主要贡献</span><strong>机器人 · 商业航天</strong></div>
+            <div><span>数据覆盖</span><strong>95.8%</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="trust band" id="trust" aria-labelledby="trust-title">
+        <div class="section-heading narrow">
+          <p class="section-index">04 / YOUR DATA</p>
+          <h2 id="trust-title">数据可靠，<br />也尊重你的边界。</h2>
+        </div>
+        <div class="trust-grid">
+          <article><span>01</span><h3>多数据源</h3><p>东方财富、腾讯与自建富途 OpenD 按拖动顺序读取，失败时自动降级。</p></article>
+          <article><span>02</span><h3>本地长期历史</h3><p>按交易日保存风格分析与趋势点，随时统计占用、查看或清理。</p></article>
+          <article><span>03</span><h3>隐私优先</h3><p>没有账号体系。自选、持仓、成本与偏好保存在你的电脑里。</p></article>
+        </div>
+      </section>
+
+      <section class="download" id="download">
+        <div>
+          <p class="section-index">STOCKTRAY v0.2.19</p>
+          <h2>把行情放进托盘。</h2>
+          <p>适用于 Windows 10 / 11 · x64 · GPL-3.0-or-later</p>
+        </div>
+        <a class="button primary" href="https://github.com/keyu-0915/StockTray/releases/latest">下载 Windows 版</a>
       </section>
     </main>
 
-    <footer class="site-footer">
-      <span>韭菜托盘 StockTray</span>
-      <a href="https://github.com/keyu-0915/StockTray">GitHub</a>
-      <a href="https://github.com/keyu-0915/StockTray/releases/latest">Releases</a>
+    <footer>
+      <a class="brand" href="#top"><span class="brand-mark">ST</span><span>StockTray</span></a>
+      <p>看一眼行情，然后继续工作。</p>
+      <div><a href="https://github.com/keyu-0915/StockTray">GitHub</a><a href="https://github.com/keyu-0915/StockTray/blob/main/README.md">文档</a><a href="https://github.com/keyu-0915/StockTray/blob/main/LICENSE">GPL-3.0</a></div>
     </footer>
   </body>
 </html>
