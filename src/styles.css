@@ -62,7 +62,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); }
 .app-header { display: grid; grid-template-columns: minmax(190px, 1fr) auto minmax(220px, 1fr); align-items: center; padding-left: 28px; background: var(--header); border-bottom: 1px solid var(--line); user-select: none; }
 .window-drag { display: flex; align-items: center; align-self: stretch; min-width: 0; user-select: none; }
 .wordmark { font-size: 21px; font-weight: 450; letter-spacing: -.4px; white-space: nowrap; }
-.wordmark span { font-weight: 720; }
+.wordmark span { color: var(--accent); font-weight: 720; }
 .wordmark small { margin-left: 10px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 20px; color: var(--accent); font-size: 11px; font-weight: 550; }
 .app-header nav { justify-self: center; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); }
 .app-header nav .sliding-options button { min-width: 112px; padding: 9px 18px; }

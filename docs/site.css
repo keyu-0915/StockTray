@@ -42,7 +42,8 @@ h1, h2, h3, p { margin-top: 0; }
 }
 
 .brand { display: inline-flex; align-items: baseline; gap: 14px; font-weight: 680; text-decoration: none; }
-.brand-mark { display: block; width: 34px; height: 34px; }
+.brand-wordmark { color: var(--ink); font-size: 22px; font-weight: 400; letter-spacing: -0.55px; line-height: 1; }
+.brand-wordmark span { color: #3488e8; font-weight: 700; }
 .site-header nav { display: flex; align-items: center; gap: 28px; }
 .site-header nav a { color: #33404b; font-size: 14px; font-weight: 560; text-decoration: none; }
 .site-header nav a:hover { color: var(--blue-deep); }

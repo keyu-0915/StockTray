@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="src-tauri/icons/icon.svg" alt="StockTray Logo" width="112" />
-
-# StockTray
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/stocktray-wordmark-dark.svg" />
+  <img src="docs/assets/stocktray-wordmark-light.svg" alt="StockTray" width="360" />
+</picture>
 
 ### 看一眼行情，然后继续工作。
 
