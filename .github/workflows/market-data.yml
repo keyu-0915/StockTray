@@ -41,7 +41,9 @@ jobs:
         run: npm ci
 
       - name: Validate embedded and fallback samples
-        run: cargo test --manifest-path src-tauri/Cargo.toml market_definition::tests::stable_pointer_targets_a_valid_definition
+        run: |
+          cp src-tauri/icons/icon-preview.png src-tauri/icons/icon.png
+          cargo test --manifest-path src-tauri/Cargo.toml market_definition::tests::stable_pointer_targets_a_valid_definition
 
       - name: Resolve definition assets
         id: definition
