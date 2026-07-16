@@ -28,10 +28,10 @@
   <rect x="330" y="84" width="620" height="392" rx="18" fill="#1D232D" fill-opacity="0.72" stroke="#46515E"/>
 
   <g font-family="Segoe UI, Microsoft YaHei, Arial, sans-serif">
-    <rect x="350" y="104" width="580" height="66" rx="14" fill="#27303C"/>
-    <text x="376" y="137" fill="#AEB8C5" font-size="16">今日合计</text>
-    <text x="376" y="159" fill="#FF8B98" font-size="28" font-weight="700">+1,286.00</text>
-    <text x="828" y="148" fill="#FF8B98" font-size="24" font-weight="700">+1.74%</text>
+    <rect x="350" y="104" width="580" height="70" rx="14" fill="#27303C"/>
+    <text x="376" y="129" fill="#AEB8C5" font-size="15">今日合计</text>
+    <text x="376" y="160" fill="#FF8B98" font-size="28" font-weight="700">+1,286.00</text>
+    <text x="904" y="151" text-anchor="end" fill="#FF8B98" font-size="24" font-weight="700">+1.74%</text>
 
     <g>
       <rect x="350" y="188" width="580" height="82" rx="14" fill="#242C36"/>

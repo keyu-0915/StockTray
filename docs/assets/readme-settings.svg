@@ -19,15 +19,15 @@
   <rect x="70" y="64" width="1140" height="632" rx="22" fill="url(#panel)" filter="url(#shadow)"/>
 
   <g font-family="Segoe UI, Microsoft YaHei, Arial, sans-serif">
-    <text x="112" y="127" fill="#F4F7FA" font-size="36" font-weight="700">韭菜托盘设置</text>
-    <rect x="378" y="100" width="88" height="36" rx="18" fill="#22394A" stroke="#3F7EA3"/>
-    <text x="402" y="124" fill="#9FE4FF" font-size="18" font-weight="600">v0.2.20</text>
-    <text x="112" y="160" fill="#A8B0BC" font-size="17">行情、弹窗、托盘提示和外观偏好</text>
+    <text x="112" y="119" fill="#F4F7FA" font-size="30" font-weight="700">StockTray 设置</text>
+    <rect x="348" y="91" width="94" height="36" rx="18" fill="#22394A" stroke="#3F7EA3"/>
+    <text x="395" y="115" text-anchor="middle" fill="#9FE4FF" font-size="17" font-weight="600">v0.2.20</text>
+    <text x="112" y="155" fill="#A8B0BC" font-size="16">行情、弹窗、托盘提示与外观偏好</text>
 
-    <rect x="942" y="98" width="84" height="42" rx="10" fill="#232832" stroke="#3B424D"/>
-    <text x="970" y="125" fill="#DCE4EC" font-size="16" font-weight="600">刷新</text>
-    <rect x="1042" y="98" width="92" height="42" rx="10" fill="#69D4FF"/>
-    <text x="1073" y="125" fill="#081016" font-size="16" font-weight="700">保存</text>
+    <rect x="942" y="94" width="84" height="42" rx="10" fill="#232832" stroke="#3B424D"/>
+    <text x="984" y="121" text-anchor="middle" fill="#DCE4EC" font-size="16" font-weight="600">刷新</text>
+    <rect x="1042" y="94" width="92" height="42" rx="10" fill="#69D4FF"/>
+    <text x="1088" y="121" text-anchor="middle" fill="#081016" font-size="16" font-weight="700">保存</text>
 
     <rect x="112" y="194" width="340" height="128" rx="16" fill="#202630" stroke="#343C49"/>
     <text x="136" y="232" fill="#E9EEF5" font-size="20" font-weight="700">今日汇总</text>
