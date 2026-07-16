@@ -569,7 +569,7 @@ function OverviewPage({ state }: { state: AppStatePayload }) {
         />
         <HoldingsTable items={summary?.items.slice(0, 5) ?? []} />
       </section>
-      <StyleTrendPanel compact history={state.market.history} />
+      <StyleTrendPanel compact history={state.market.history} styles={state.market.current?.styles ?? []} />
     </div>
   );
 }
@@ -918,10 +918,12 @@ function scoreDomain(history: AppStatePayload["market"]["history"]) {
 
 function StyleTrendPanel({
   history,
+  styles,
   compact = false,
   children,
 }: {
   history: AppStatePayload["market"]["history"];
+  styles: StyleAnalysis[];
   compact?: boolean;
   children?: React.ReactNode;
 }) {
@@ -938,7 +940,11 @@ function StyleTrendPanel({
   const yTicks = Array.from({ length: 5 }, (_, index) => domain.min + (domain.max - domain.min) * index / 4);
   const first = continuousHistory[0] ?? history[0];
   const latest = continuousHistory[continuousHistory.length - 1] ?? history[history.length - 1];
-  const ranked = STYLE_TREND_SERIES
+  const seriesDefinitions = STYLE_TREND_SERIES.map((series) => ({
+    ...series,
+    label: styles.find((style) => style.id === series.id)?.label ?? series.label,
+  }));
+  const ranked = seriesDefinitions
     .map((series) => ({ ...series, score: latest?.scores[series.index] ?? 0 }))
     .sort((a, b) => b.score - a.score);
   const leaderGap = ranked.length > 1 ? ranked[0].score - ranked[1].score : 0;
@@ -954,7 +960,7 @@ function StyleTrendPanel({
       {history.length ? (
         <div className="style-trend-content">
           <div className="style-trend-chart">
-            <svg aria-label="小登、中登、老登今日分数走势" role="img" viewBox={`0 0 ${width} ${height}`}>
+            <svg aria-label={`${seriesDefinitions.map((series) => series.label).join("、")}今日分数走势`} role="img" viewBox={`0 0 ${width} ${height}`}>
               <rect className="trend-lunch" x={x("11:30")} y={padding.top} width={x("13:00") - x("11:30")} height={chartHeight} />
               <text className="trend-lunch-label" textAnchor="middle" x={(x("11:30") + x("13:00")) / 2} y={padding.top + 12}>午间休市</text>
               {yTicks.map((score) => (
@@ -963,7 +969,7 @@ function StyleTrendPanel({
                   <text textAnchor="end" x={padding.left - 8} y={y(score) + 4}>{score.toFixed(0)}</text>
                 </g>
               ))}
-              {STYLE_TREND_SERIES.map((series) => {
+              {seriesDefinitions.map((series) => {
                 const sessions = [
                   continuousHistory.filter((item) => marketMinute(item.time) <= 11 * 60 + 30),
                   continuousHistory.filter((item) => marketMinute(item.time) >= 13 * 60),
@@ -994,7 +1000,7 @@ function StyleTrendPanel({
             </svg>
           </div>
           <div className="style-trend-legend">
-            {STYLE_TREND_SERIES.map((series) => {
+            {seriesDefinitions.map((series) => {
               const value = latest?.scores[series.index] ?? 0;
               const change = value - (first?.scores[series.index] ?? value);
               return (
@@ -1068,6 +1074,10 @@ function MarketPage({ state }: { state: AppStatePayload }) {
           value={`${sampleSourceLabel(market.quality.sample_source)} / ${modeLabel(market.quality.mode)}`}
         />
         <Metric
+          label="样本定义"
+          value={`${market.quality.definition_version} / ${definitionSourceLabel(market.quality.definition_source)}`}
+        />
+        <Metric
           label="行情时间"
           value={`${market.trading_date} ${market.time}`}
         />
@@ -1089,7 +1099,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
         <section className="panel">
           <SectionTitle
             title="贡献拆解"
-            detail={focusedStyle ? `${focusedStyle.label} → ${focusedStyle.subtitle} · 流通市值有效 ${focusedStyle.float_cap_coverage.toFixed(1)}% · 点击细分查看全部样本${market.quality.sample_source === "offline_proxy" ? " · 当前为离线替代样本" : ""}` : ""}
+            detail={focusedStyle ? `${focusedStyle.label} → ${focusedStyle.subtitle} · 流通市值有效 ${focusedStyle.float_cap_coverage.toFixed(1)}% · 点击细分查看全部样本${isProxySample(market.quality.sample_source) ? " · 当前为离线替代样本" : ""}` : ""}
           />
           {focusedStyle && (
             <div className="style-metrics">
@@ -1110,7 +1120,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
           {focusedStyle?.subsectors.map((subsector) => (
             <button aria-pressed={selectedSubsector === subsector.id} className="subsector-row" key={subsector.id} onClick={() => setSelectedSubsector(subsector.id)} type="button">
               <div>
-                <b>{subsectorLabel(subsector.name, market.quality.sample_source === "offline_proxy")}</b>
+                <b>{subsectorLabel(subsector.name, isProxySample(market.quality.sample_source))}</b>
                 <small>上涨广度 {subsector.breadth.toFixed(0)}%</small>
               </div>
               <Progress
@@ -1131,7 +1141,7 @@ function MarketPage({ state }: { state: AppStatePayload }) {
                 <ContributionRow
                   item={item}
                   key={`p-${item.code}-${item.subsector}`}
-                  proxy={market.quality.sample_source === "offline_proxy"}
+                  proxy={isProxySample(market.quality.sample_source)}
                 />
               ))}
             </div>
@@ -1141,14 +1151,14 @@ function MarketPage({ state }: { state: AppStatePayload }) {
                 <ContributionRow
                   item={item}
                   key={`n-${item.code}-${item.subsector}`}
-                  proxy={market.quality.sample_source === "offline_proxy"}
+                  proxy={isProxySample(market.quality.sample_source)}
                 />
               ))}
             </div>
           </div>
         </section>
       </div>
-      <StyleTrendPanel history={state.market.history}>
+      <StyleTrendPanel history={state.market.history} styles={market.styles}>
         <p className="trend-methodology">
           主贡献按交易日冻结的前收盘自由流通市值加权，单股不超过10%、前五大合计不超过40%；等权结果仅用于观察上涨广度。任一分类有效覆盖率低于80%、流通市值有效率低于95%、关键指数不足、时间戳缺失或盘中延迟超限时不输出结论；ST、新股和停牌不参与评分，涨跌停保留并标注。
           {market.quality.index_derived
@@ -1169,12 +1179,12 @@ function MarketPage({ state }: { state: AppStatePayload }) {
             <button className="modal-close" aria-label="关闭" onClick={() => setSelectedSubsector(null)}>×</button>
             <header>
               <span>{focusedStyle?.label} · 样本贡献明细</span>
-              <h2 id="contribution-detail-title">{subsectorLabel(selectedSubsector, market.quality.sample_source === "offline_proxy")}</h2>
+              <h2 id="contribution-detail-title">{subsectorLabel(selectedSubsector, isProxySample(market.quality.sample_source))}</h2>
               <small>共 {detailedContributions.length} 条，按贡献值从高到低排列</small>
             </header>
             <div className="contribution-detail-list">
               {detailedContributions.map((item) => (
-                <ContributionRow item={item} key={`${item.code}-${item.subsector}`} prefix={item.code} proxy={market.quality.sample_source === "offline_proxy"} />
+                <ContributionRow item={item} key={`${item.code}-${item.subsector}`} prefix={item.code} proxy={isProxySample(market.quality.sample_source)} />
               ))}
             </div>
           </section>
@@ -1939,9 +1949,6 @@ function subsectorLabel(name: string, proxy: boolean) {
     "国防军工代理": "商业航天（军工样本）",
   } as Record<string, string>)[name] ?? name;
 }
-function styleLabel(id: string) {
-  return id === "young" ? "小登" : id === "middle" ? "中登" : "老登";
-}
 function modeLabel(mode: string) {
   return mode === "fallback" ? "部分备用源" : mode === "cached_index" ? "指数短时缓存" : mode === "derived_index" ? "宽基+成分推断" : "完整行情";
 }
@@ -1952,7 +1959,15 @@ function sampleSourceLabel(source: string) {
       ? "缓存精确样本"
       : source === "offline_proxy"
         ? "离线行业代理"
+        : source === "remote_fallback"
+          ? "远程签名兜底样本"
         : "样本待确认";
+}
+function definitionSourceLabel(source: string) {
+  return source === "remote_signed" ? "远程签名" : "程序内置";
+}
+function isProxySample(source: string) {
+  return source === "offline_proxy" || source === "remote_fallback";
 }
 function styleStateLabel(state: string) {
   return state === "strong" ? "强势" : state === "weak" ? "偏弱" : "中性";

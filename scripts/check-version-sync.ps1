@@ -9,7 +9,7 @@ $version = $package.version
 
 $failed = @()
 if ($env:GITHUB_REF_NAME -and $env:GITHUB_REF_NAME -ne "v$version") { $failed += "Git tag $env:GITHUB_REF_NAME (expected v$version)" }
-if (-not (Test-Path (Join-Path $root "src-tauri\resources\market-universe.txt"))) { $failed += "src-tauri/resources/market-universe.txt" }
+if (-not (Test-Path (Join-Path $root "docs\market\stable.json"))) { $failed += "docs/market/stable.json" }
 if ([regex]::Matches($packageLockHeader, "`"version`"\s*:\s*`"$([regex]::Escape($version))`"").Count -ne 2) { $failed += "package-lock.json" }
 if ($cargoToml -notmatch "(?m)^version\s*=\s*`"$([regex]::Escape($version))`"") { $failed += "src-tauri/Cargo.toml" }
 if ($tauriConfig.version -ne $version) { $failed += "src-tauri/tauri.conf.json" }

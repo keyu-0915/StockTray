@@ -189,6 +189,8 @@ export type MarketSnapshot = {
     coverage: number;
     mode: string;
     sample_source: string;
+    definition_source: string;
+    definition_version: string;
     style_coverage: number[];
     minimum_style_coverage: number;
     raw_received: number;
@@ -218,6 +220,9 @@ export type MarketAnalysisState = {
   history: Array<{
     time: string;
     phase: string;
+    sample_source: string;
+    definition_source: string;
+    definition_version: string;
     leader: string | null;
     scores: number[];
     status: string;

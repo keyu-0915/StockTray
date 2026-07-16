@@ -181,7 +181,7 @@ pub(crate) fn load_market_state() -> MarketAnalysisState {
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or_default();
     let incompatible = state.current.is_some()
-        && (state.sample_version != crate::market::SAMPLE_VERSION
+        && (state.sample_version != crate::market_definition::active_definition_version()
             || state.algorithm_version != crate::market::ALGORITHM_VERSION);
     if incompatible {
         let _ = archive_market_day(&state);
@@ -254,7 +254,7 @@ pub(crate) fn save_config_to(path: &Path, config: &AppConfig) -> Result<(), Stri
 
 fn empty_market_state() -> MarketAnalysisState {
     MarketAnalysisState {
-        sample_version: crate::market::SAMPLE_VERSION.into(),
+        sample_version: crate::market_definition::active_definition_version(),
         algorithm_version: crate::market::ALGORITHM_VERSION.into(),
         ..Default::default()
     }
@@ -274,7 +274,8 @@ pub(crate) fn expire_market_state_if_needed(
     _today: &str,
     _is_weekday: bool,
 ) -> bool {
-    let wrong_version = state.sample_version != crate::market::SAMPLE_VERSION
+    let wrong_version = state.sample_version
+        != crate::market_definition::active_definition_version()
         || state.algorithm_version != crate::market::ALGORITHM_VERSION;
     if wrong_version || (state.current.is_none() && !state.history.is_empty()) {
         *state = empty_market_state();
@@ -616,7 +617,7 @@ mod tests {
                 ..Default::default()
             }),
             history: vec![MarketEvidence::default()],
-            sample_version: crate::market::SAMPLE_VERSION.into(),
+            sample_version: crate::market_definition::active_definition_version(),
             algorithm_version: crate::market::ALGORITHM_VERSION.into(),
             ..Default::default()
         }
