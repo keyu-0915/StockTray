@@ -4,6 +4,7 @@ use chrono::{Local, NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    market_definition::{self, BoardDefinition, MarketDefinition, SignedDefinition},
     models::{
         MarketContribution, MarketDataQuality, MarketSnapshot, StockData, StyleAnalysis,
         SubsectorAnalysis,
@@ -11,12 +12,7 @@ use crate::{
     quotes::{fetch_board_members, QuoteFetchResult},
 };
 
-pub(crate) const SAMPLE_VERSION: &str = "2026.07-v4";
 pub(crate) const ALGORITHM_VERSION: &str = "2.2.0";
-const MIN_UNIVERSE: usize = 450;
-const MAX_UNIVERSE: usize = 550;
-const MIN_PER_STYLE: usize = 120;
-const MAX_PER_STYLE: usize = 180;
 const MIN_COVERAGE: f32 = 80.0;
 const LEADER_GAP: f32 = 8.0;
 const STRONG_SCORE: f32 = 60.0;
@@ -24,103 +20,9 @@ const WEAK_SCORE: f32 = 40.0;
 const MIN_FLOAT_CAP_COVERAGE: f32 = 95.0;
 const MAX_STOCK_WEIGHT: f64 = 0.10;
 const MAX_TOP_FIVE_WEIGHT: f64 = 0.40;
-const UNIVERSE_REFRESH_DAYS: i64 = 7;
 const INDEX_CACHE_MAX_MINUTES: f32 = 10.0;
-
-#[derive(Debug, Clone)]
-struct BoardSpec {
-    style: &'static str,
-    subsector: &'static str,
-    board: &'static str,
-}
-
-const BOARDS: &[BoardSpec] = &[
-    BoardSpec {
-        style: "young",
-        subsector: "AI芯片",
-        board: "BK1127",
-    },
-    BoardSpec {
-        style: "young",
-        subsector: "CPO",
-        board: "BK1128",
-    },
-    BoardSpec {
-        style: "young",
-        subsector: "PCB",
-        board: "BK0877",
-    },
-    BoardSpec {
-        style: "young",
-        subsector: "存储芯片",
-        board: "BK1137",
-    },
-    BoardSpec {
-        style: "young",
-        subsector: "半导体设备",
-        board: "BK1326",
-    },
-    BoardSpec {
-        style: "middle",
-        subsector: "商业航天",
-        board: "BK0963",
-    },
-    BoardSpec {
-        style: "middle",
-        subsector: "游戏",
-        board: "BK1046",
-    },
-    BoardSpec {
-        style: "middle",
-        subsector: "人形机器人",
-        board: "BK1184",
-    },
-    BoardSpec {
-        style: "middle",
-        subsector: "机器人执行器",
-        board: "BK1145",
-    },
-    BoardSpec {
-        style: "old",
-        subsector: "银行红利",
-        board: "BK0475",
-    },
-    BoardSpec {
-        style: "old",
-        subsector: "保险",
-        board: "BK0474",
-    },
-    BoardSpec {
-        style: "old",
-        subsector: "白色家电",
-        board: "BK1239",
-    },
-    BoardSpec {
-        style: "old",
-        subsector: "食品饮料",
-        board: "BK0438",
-    },
-    BoardSpec {
-        style: "old",
-        subsector: "煤炭",
-        board: "BK0437",
-    },
-    BoardSpec {
-        style: "old",
-        subsector: "石油石化",
-        board: "BK0464",
-    },
-];
-
-const BROAD_INDICES: &[&str] = &["1.000001", "1.000300", "0.399001", "0.399006", "1.000688"];
-
-pub(crate) fn index_secids() -> Vec<String> {
-    BOARDS
-        .iter()
-        .map(|spec| format!("90.{}", spec.board))
-        .chain(BROAD_INDICES.iter().map(|code| (*code).to_string()))
-        .collect()
-}
+pub(crate) const BROAD_INDICES: &[&str] =
+    &["1.000001", "1.000300", "0.399001", "0.399006", "1.000688"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Exposure {
@@ -136,9 +38,11 @@ pub(crate) struct SampleMember {
     exposures: Vec<Exposure>,
 }
 
-#[derive(Default)]
 pub(crate) struct MarketEngine {
     pub(crate) members: Vec<SampleMember>,
+    definition: MarketDefinition,
+    definition_source: String,
+    definition_checked_on: String,
     universe_source: String,
     universe_refreshed_on: String,
     last_amounts: HashMap<String, f64>,
@@ -151,20 +55,54 @@ pub(crate) struct MarketEngine {
     pending_count: u8,
 }
 
+impl Default for MarketEngine {
+    fn default() -> Self {
+        let (definition, definition_source) = market_definition::active_definition();
+        Self {
+            members: Vec::new(),
+            definition,
+            definition_source,
+            definition_checked_on: String::new(),
+            universe_source: String::new(),
+            universe_refreshed_on: String::new(),
+            last_amounts: HashMap::new(),
+            base_float_caps: HashMap::new(),
+            last_sample_time: String::new(),
+            last_index_quotes: Vec::new(),
+            last_index_time: String::new(),
+            last_trading_date: String::new(),
+            pending_leader: None,
+            pending_count: 0,
+        }
+    }
+}
+
 impl MarketEngine {
+    pub(crate) fn sample_version(&self) -> &str {
+        &self.definition.definition_version
+    }
+
+    pub(crate) fn index_secids(&self) -> Vec<String> {
+        self.definition.index_secids()
+    }
+
     pub(crate) async fn ensure_universe(&mut self) -> Result<(), String> {
         if !self.members.is_empty() {
             return Ok(());
         }
-        if let Some(cache) = load_cached_universe() {
+        if let Some(cache) = load_cached_universe(&self.definition) {
             self.members = cache.members;
-            self.universe_source = "cache_exact".into();
+            self.universe_source = if cache.source.is_empty() {
+                "cache_exact".into()
+            } else {
+                cache.source
+            };
             self.universe_refreshed_on = cache.refreshed_on;
             return Ok(());
         }
-        self.members = match resolve_universe().await {
+        self.members = match resolve_universe(&self.definition).await {
             Ok(members) => {
-                save_cached_universe(&members);
+                save_cached_universe(&self.definition, &members, "online_exact");
                 self.universe_source = "online_exact".into();
                 self.universe_refreshed_on = Local::now().format("%Y-%m-%d").to_string();
                 members
@@ -172,7 +110,7 @@ impl MarketEngine {
             Err(error) => {
                 eprintln!("market universe fallback: {error}");
                 self.universe_source = "offline_proxy".into();
-                embedded_universe()?
+                embedded_universe(&self.definition)?
             }
         };
         Ok(())
@@ -181,16 +119,39 @@ impl MarketEngine {
     pub(crate) async fn refresh_universe_if_due(&mut self) -> Result<bool, String> {
         let now = Local::now();
         let today = now.date_naive();
+        let today_text = today.format("%Y-%m-%d").to_string();
+        if self.definition_checked_on != today_text {
+            let pending_version = market_definition::load_pending_definition()
+                .map(|pending| pending.definition.definition_version)
+                .unwrap_or_else(|| self.definition.definition_version.clone());
+            match market_definition::fetch_remote_definition(&pending_version).await {
+                Ok(Some(definition)) => {
+                    market_definition::save_pending_definition(&definition)?;
+                }
+                Ok(None) => {}
+                Err(error) => eprintln!("market definition refresh deferred: {error}"),
+            }
+            self.definition_checked_on = today_text.clone();
+        }
+        let phase = analysis_phase(&now.format("%H:%M:%S").to_string());
+        if phase == "auction_final" {
+            if let Some(pending) = market_definition::load_pending_definition().filter(|pending| {
+                pending.definition.definition_version != self.definition.definition_version
+                    && pending.definition.is_effective(today)
+            }) {
+                return self.activate_definition(pending, today).await;
+            }
+        }
         let stale = NaiveDate::parse_from_str(&self.universe_refreshed_on, "%Y-%m-%d")
-            .map(|refreshed| (today - refreshed).num_days() >= UNIVERSE_REFRESH_DAYS)
+            .map(|refreshed| (today - refreshed).num_days() >= self.definition.member_refresh_days)
             .unwrap_or(true);
-        if !stale || analysis_phase(&now.format("%H:%M:%S").to_string()) != "auction_final" {
+        if !stale || phase != "auction_final" {
             return Ok(false);
         }
-        let members = resolve_universe().await?;
+        let members = resolve_universe(&self.definition).await?;
         let changed =
             serde_json::to_string(&members).ok() != serde_json::to_string(&self.members).ok();
-        save_cached_universe(&members);
+        save_cached_universe(&self.definition, &members, "online_exact");
         self.members = members;
         self.universe_source = "online_exact".into();
         self.universe_refreshed_on = today.format("%Y-%m-%d").to_string();
@@ -198,6 +159,29 @@ impl MarketEngine {
             self.reset_intraday();
         }
         Ok(changed)
+    }
+
+    async fn activate_definition(
+        &mut self,
+        pending: SignedDefinition,
+        today: NaiveDate,
+    ) -> Result<bool, String> {
+        let (members, source) = match resolve_universe(&pending.definition).await {
+            Ok(members) => (members, "online_exact"),
+            Err(error) => {
+                eprintln!("new market definition uses signed fallback: {error}");
+                (embedded_universe(&pending.definition)?, "remote_fallback")
+            }
+        };
+        save_cached_universe(&pending.definition, &members, source);
+        market_definition::activate_definition(&pending)?;
+        self.definition = pending.definition;
+        self.definition_source = "remote_signed".into();
+        self.members = members;
+        self.universe_source = source.into();
+        self.universe_refreshed_on = today.format("%Y-%m-%d").to_string();
+        self.reset_intraday();
+        Ok(true)
     }
 
     pub(crate) fn reset_intraday(&mut self) {
@@ -393,8 +377,9 @@ impl MarketEngine {
             && trading_minutes_between(&self.last_index_time, data_time)
                 .is_some_and(|minutes| minutes <= INDEX_CACHE_MAX_MINUTES);
         let mut index_cached = false;
+        let board_count = self.definition.boards().count();
         if fresh_index_available
-            && fresh_index_count < BOARDS.len() + BROAD_INDICES.len()
+            && fresh_index_count < board_count + BROAD_INDICES.len()
             && recent_index_cache
             && self.last_index_quotes.len() > fresh_index_count
         {
@@ -447,7 +432,7 @@ impl MarketEngine {
             })
             .cloned()
             .collect::<Vec<_>>();
-        let index_expected = BOARDS.len() + BROAD_INDICES.len();
+        let index_expected = board_count + BROAD_INDICES.len();
         let index_received = valid_index_quotes.len();
         let broad_index_received = valid_index_quotes
             .iter()
@@ -456,14 +441,19 @@ impl MarketEngine {
         let style_index_coverage = ["young", "middle", "old"]
             .into_iter()
             .map(|style| {
-                let expected = BOARDS.iter().filter(|spec| spec.style == style).count();
-                let received = BOARDS
-                    .iter()
-                    .filter(|spec| spec.style == style)
-                    .filter(|spec| {
+                let expected = self
+                    .definition
+                    .boards()
+                    .filter(|(board_style, _)| *board_style == style)
+                    .count();
+                let received = self
+                    .definition
+                    .boards()
+                    .filter(|(board_style, _)| *board_style == style)
+                    .filter(|(_, board)| {
                         valid_index_quotes
                             .iter()
-                            .any(|quote| quote.code == format!("em:{}", spec.board))
+                            .any(|quote| quote.code == format!("em:{}", board.code))
                     })
                     .count();
                 received as f32 / expected.max(1) as f32 * 100.0
@@ -478,7 +468,7 @@ impl MarketEngine {
             && minimum_index_style_coverage >= 60.0;
         let index_derived = enforce_index_quality
             && !independent_index_ok
-            && expected >= MIN_UNIVERSE
+            && expected >= self.definition.limits.min_total
             && coverage >= 95.0
             && minimum_style_coverage >= 95.0
             && timestamp_missing == 0
@@ -499,6 +489,8 @@ impl MarketEngine {
             }
             .into(),
             sample_source: self.universe_source.clone(),
+            definition_source: self.definition_source.clone(),
+            definition_version: self.definition.definition_version.clone(),
             style_coverage,
             minimum_style_coverage,
             raw_received,
@@ -525,7 +517,7 @@ impl MarketEngine {
             .then(|| trading_minutes_between(&self.last_sample_time, data_time))
             .flatten()
             .filter(|minutes| *minutes >= 1.0);
-        let index_signals = style_index_signals(&valid_index_quotes);
+        let index_signals = style_index_signals(&valid_index_quotes, &self.definition);
         let market_return = broad_index_return(&valid_index_quotes, data_time);
         let metrics = build_metrics(
             &self.members,
@@ -535,14 +527,18 @@ impl MarketEngine {
             activity_minutes,
             market_return,
         );
-        let mut styles = ["young", "middle", "old"]
-            .into_iter()
-            .map(|style| {
+        let mut styles = self
+            .definition
+            .styles
+            .iter()
+            .map(|definition| {
                 build_style(
-                    style,
+                    &definition.id,
+                    &definition.label,
+                    &definition.subtitle,
                     &metrics,
                     previous,
-                    index_signals.get(style).copied().unwrap_or(0.0),
+                    index_signals.get(&definition.id).copied().unwrap_or(0.0),
                     data_time,
                 )
             })
@@ -553,7 +549,11 @@ impl MarketEngine {
         let mut ranked = styles.iter().collect::<Vec<_>>();
         ranked.sort_by(|a, b| b.preference.total_cmp(&a.preference));
         let candidate = ranked.first().map(|style| style.id.clone());
-        let candidate_label = candidate.as_deref().map(style_label).unwrap_or("-");
+        let candidate_label = candidate
+            .as_deref()
+            .and_then(|id| self.definition.style(id))
+            .map(|style| style.label.as_str())
+            .unwrap_or("-");
         let gap = ranked
             .first()
             .zip(ranked.get(1))
@@ -582,7 +582,10 @@ impl MarketEngine {
             && cap_quality_ok
             && expected > 0;
         quality.conclusion_ready = quality_ok;
-        let proxy_sample = quality.sample_source == "offline_proxy";
+        let proxy_sample = matches!(
+            quality.sample_source.as_str(),
+            "offline_proxy" | "remote_fallback"
+        );
 
         let (status, leader) = if !quality_ok {
             self.pending_leader = None;
@@ -656,8 +659,8 @@ impl MarketEngine {
         }
         let leader_label = leader
             .as_deref()
-            .map(style_label)
-            .map(str::to_string)
+            .and_then(|id| self.definition.style(id))
+            .map(|style| style.label.clone())
             .unwrap_or_else(|| match status.as_str() {
                 "relative" => format!("{candidate_label}相对占优"),
                 "balanced" => "多线均衡".into(),
@@ -704,9 +707,12 @@ impl MarketEngine {
 
 #[derive(Serialize, Deserialize)]
 struct UniverseCache {
-    sample_version: String,
+    #[serde(alias = "sample_version")]
+    definition_version: String,
     #[serde(default)]
     refreshed_on: String,
+    #[serde(default)]
+    source: String,
     members: Vec<SampleMember>,
 }
 
@@ -714,31 +720,24 @@ fn universe_cache_path() -> std::path::PathBuf {
     crate::config::config_path().with_file_name("market-universe.json")
 }
 
-fn load_cached_universe() -> Option<UniverseCache> {
+fn load_cached_universe(definition: &MarketDefinition) -> Option<UniverseCache> {
     let cache: UniverseCache = std::fs::read_to_string(universe_cache_path())
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())?;
-    (cache.sample_version == SAMPLE_VERSION && valid_universe(&cache.members)).then_some(cache)
+    (cache.definition_version == definition.definition_version
+        && valid_universe(definition, &cache.members))
+    .then_some(cache)
 }
 
-fn embedded_universe() -> Result<Vec<SampleMember>, String> {
+fn embedded_universe(definition: &MarketDefinition) -> Result<Vec<SampleMember>, String> {
     let mut members = Vec::new();
-    for line in include_str!("../resources/market-universe.txt")
-        .lines()
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-    {
-        let mut fields = line.split('|');
-        let (Some(style), Some(subsector), Some(codes), None) =
-            (fields.next(), fields.next(), fields.next(), fields.next())
-        else {
-            return Err("内置样本格式错误".into());
-        };
-        members.extend(codes.split(',').map(|code| SampleMember {
+    for group in &definition.fallback_groups {
+        members.extend(group.codes.split(',').map(|code| SampleMember {
             code: code.into(),
             name: code.into(),
             exposures: vec![Exposure {
-                style: style.into(),
-                subsector: match subsector {
+                style: group.style.clone(),
+                subsector: match group.subsector.as_str() {
                     "AI硬件" => "电子代理",
                     "光通信" => "通信代理",
                     "算力基础设施" => "计算机代理",
@@ -752,13 +751,13 @@ fn embedded_universe() -> Result<Vec<SampleMember>, String> {
             }],
         }));
     }
-    valid_universe(&members)
+    valid_universe(definition, &members)
         .then_some(members)
         .ok_or_else(|| "内置样本未达到覆盖门槛".into())
 }
 
-fn valid_universe(members: &[SampleMember]) -> bool {
-    if !(MIN_UNIVERSE..=MAX_UNIVERSE).contains(&members.len())
+fn valid_universe(definition: &MarketDefinition, members: &[SampleMember]) -> bool {
+    if !(definition.limits.min_total..=definition.limits.max_total).contains(&members.len())
         || members
             .iter()
             .map(|member| &member.code)
@@ -773,15 +772,16 @@ fn valid_universe(members: &[SampleMember]) -> bool {
             .iter()
             .filter(|member| member.exposures.iter().any(|item| item.style == style))
             .count()
-            >= MIN_PER_STYLE
+            >= definition.limits.min_per_style
     })
 }
 
-fn save_cached_universe(members: &[SampleMember]) {
+fn save_cached_universe(definition: &MarketDefinition, members: &[SampleMember], source: &str) {
     let path = universe_cache_path();
     let cache = UniverseCache {
-        sample_version: SAMPLE_VERSION.into(),
+        definition_version: definition.definition_version.clone(),
         refreshed_on: Local::now().format("%Y-%m-%d").to_string(),
+        source: source.into(),
         members: members.to_vec(),
     };
     if let (Some(parent), Ok(text)) = (path.parent(), serde_json::to_string_pretty(&cache)) {
@@ -804,31 +804,39 @@ struct MemberMetric {
     limit_state: i8,
 }
 
-async fn resolve_universe() -> Result<Vec<SampleMember>, String> {
+async fn resolve_universe(definition: &MarketDefinition) -> Result<Vec<SampleMember>, String> {
     let mut tasks = tokio::task::JoinSet::new();
-    for spec in BOARDS {
-        tasks.spawn(async move { (spec, fetch_board_members(spec.board).await) });
+    for (style, board) in definition.boards() {
+        let style = style.to_string();
+        let board = board.clone();
+        tasks.spawn(async move {
+            let result = fetch_board_members(&board.code).await;
+            (style, board, result)
+        });
     }
     let mut groups = Vec::new();
     while let Some(result) = tasks.join_next().await {
-        let (spec, members) = result.map_err(|error| error.to_string())?;
+        let (style, board, members) = result.map_err(|error| error.to_string())?;
         groups.push((
-            spec,
-            members.map_err(|error| format!("{}: {error}", spec.subsector))?,
+            style,
+            board.clone(),
+            members.map_err(|error| format!("{}: {error}", board.name))?,
         ));
     }
-    let members = build_stratified_universe(groups, MAX_PER_STYLE);
-    valid_universe(&members)
+    let members = build_stratified_universe(groups, definition.limits.max_per_style);
+    valid_universe(definition, &members)
         .then_some(members)
         .ok_or_else(|| "在线样本未达到总量或分类覆盖门槛".into())
 }
 
 fn build_stratified_universe(
-    mut groups: Vec<(&BoardSpec, Vec<crate::quotes::BoardMember>)>,
+    mut groups: Vec<(String, BoardDefinition, Vec<crate::quotes::BoardMember>)>,
     max_per_style: usize,
 ) -> Vec<SampleMember> {
-    groups.sort_by_key(|(spec, _)| (spec.style, spec.subsector, spec.board));
-    for (_, members) in &mut groups {
+    type RawExposure = (String, String, f32);
+    type RawMember = (String, Vec<RawExposure>);
+    groups.sort_by(|a, b| (&a.0, &a.1.name, &a.1.code).cmp(&(&b.0, &b.1.name, &b.1.code)));
+    for (_, _, members) in &mut groups {
         members.sort_by(|a, b| {
             b.float_market_cap
                 .total_cmp(&a.float_market_cap)
@@ -836,37 +844,42 @@ fn build_stratified_universe(
         });
         members.dedup_by(|a, b| a.code == b.code);
     }
-    let mut raw: HashMap<String, (String, Vec<(String, String)>)> = HashMap::new();
-    let mut style_codes: HashMap<&str, HashSet<String>> = HashMap::new();
+    let mut raw: HashMap<String, RawMember> = HashMap::new();
+    let mut style_codes: HashMap<String, HashSet<String>> = HashMap::new();
     for style in ["young", "middle", "old"] {
         let style_groups = groups
             .iter()
-            .filter(|(spec, _)| spec.style == style)
+            .filter(|(group_style, _, _)| group_style == style)
             .collect::<Vec<_>>();
         let max_len = style_groups
             .iter()
-            .map(|(_, members)| members.len())
+            .map(|(_, board, members)| members.len().div_ceil(board.sample_weight as usize))
             .max()
             .unwrap_or(0);
         for index in 0..max_len {
-            for (spec, members) in &style_groups {
-                let Some(member) = members.get(index) else {
-                    continue;
-                };
-                let style_set = style_codes.entry(spec.style).or_default();
-                if !style_set.contains(&member.code) && style_set.len() >= max_per_style {
-                    continue;
-                }
-                style_set.insert(member.code.clone());
-                let entry = raw
-                    .entry(member.code.clone())
-                    .or_insert_with(|| (member.name.clone(), Vec::new()));
-                if !entry
-                    .1
-                    .iter()
-                    .any(|(style, subsector)| style == spec.style && subsector == spec.subsector)
-                {
-                    entry.1.push((spec.style.into(), spec.subsector.into()));
+            for (group_style, board, members) in &style_groups {
+                for offset in 0..board.sample_weight as usize {
+                    let Some(member) = members.get(index * board.sample_weight as usize + offset)
+                    else {
+                        continue;
+                    };
+                    let style_set = style_codes.entry(group_style.clone()).or_default();
+                    if !style_set.contains(&member.code) && style_set.len() >= max_per_style {
+                        continue;
+                    }
+                    style_set.insert(member.code.clone());
+                    let entry = raw
+                        .entry(member.code.clone())
+                        .or_insert_with(|| (member.name.clone(), Vec::new()));
+                    if !entry.1.iter().any(|(existing_style, subsector, _)| {
+                        existing_style == group_style && subsector == &board.name
+                    }) {
+                        entry.1.push((
+                            group_style.clone(),
+                            board.name.clone(),
+                            board.sample_weight as f32,
+                        ));
+                    }
                 }
             }
         }
@@ -877,7 +890,7 @@ fn build_stratified_universe(
             let style_counts = raw_exposures
                 .iter()
                 .fold(HashMap::new(), |mut counts, item| {
-                    *counts.entry(item.0.clone()).or_insert(0usize) += 1;
+                    *counts.entry(item.0.clone()).or_insert(0.0f32) += item.2;
                     counts
                 });
             SampleMember {
@@ -885,8 +898,8 @@ fn build_stratified_universe(
                 name,
                 exposures: raw_exposures
                     .into_iter()
-                    .map(|(style, subsector)| Exposure {
-                        weight: 1.0 / *style_counts.get(style.as_str()).unwrap_or(&1) as f32,
+                    .map(|(style, subsector, board_weight)| Exposure {
+                        weight: board_weight / *style_counts.get(style.as_str()).unwrap_or(&1.0),
                         style,
                         subsector,
                     })
@@ -992,6 +1005,8 @@ fn build_metrics(
 
 fn build_style(
     style: &str,
+    label: &str,
+    subtitle: &str,
     metrics: &[MemberMetric],
     previous: Option<&MarketSnapshot>,
     index_signal: f32,
@@ -1225,8 +1240,8 @@ fn build_style(
         .unwrap_or(score_change);
     StyleAnalysis {
         id: style.into(),
-        label: style_label(style).into(),
-        subtitle: style_subtitle(style).into(),
+        label: label.into(),
+        subtitle: subtitle.into(),
         score,
         heat,
         preference,
@@ -1540,7 +1555,10 @@ fn rotation_summary(
     (None, "轮动不明显".into(), stability)
 }
 
-fn style_index_signals(quotes: &[StockData]) -> HashMap<String, f32> {
+fn style_index_signals(
+    quotes: &[StockData],
+    definition: &MarketDefinition,
+) -> HashMap<String, f32> {
     let quote_by_board = quotes
         .iter()
         .filter_map(|quote| {
@@ -1550,15 +1568,21 @@ fn style_index_signals(quotes: &[StockData]) -> HashMap<String, f32> {
                 .map(|code| (code, quote.change_percent))
         })
         .collect::<HashMap<_, _>>();
-    ["young", "middle", "old"]
-        .into_iter()
+    definition
+        .styles
+        .iter()
         .map(|style| {
-            let values = BOARDS
+            let values = style
+                .boards
                 .iter()
-                .filter(|spec| spec.style == style)
-                .filter_map(|spec| quote_by_board.get(spec.board).copied())
+                .filter_map(|board| {
+                    quote_by_board
+                        .get(board.code.as_str())
+                        .copied()
+                        .map(|value| (value, board.sample_weight as f32))
+                })
                 .collect::<Vec<_>>();
-            (style.to_string(), median(&values))
+            (style.id.clone(), weighted_median(&values))
         })
         .collect()
 }
@@ -1769,22 +1793,6 @@ fn style_order(style: &str) -> u8 {
         _ => 2,
     }
 }
-fn style_label(style: &str) -> &'static str {
-    match style {
-        "young" => "小登",
-        "middle" => "中登",
-        "old" => "老登",
-        _ => "-",
-    }
-}
-fn style_subtitle(style: &str) -> &'static str {
-    match style {
-        "young" => "AI硬件",
-        "middle" => "商业航天 · 游戏 · 机器人",
-        "old" => "银行红利 · 消费 · 资源",
-        _ => "",
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1820,9 +1828,9 @@ mod tests {
     }
 
     fn complete_index_evidence(time: &str) -> Vec<StockData> {
-        BOARDS
-            .iter()
-            .map(|spec| format!("em:{}", spec.board))
+        MarketDefinition::embedded()
+            .boards()
+            .map(|(_, board)| format!("em:{}", board.code))
             .chain(
                 BROAD_INDICES
                     .iter()
@@ -2009,7 +2017,7 @@ mod tests {
             true,
         );
         assert_ne!(snapshot.status, "no_conclusion");
-        assert_eq!(snapshot.quality.index_received, index_secids().len());
+        assert_eq!(snapshot.quality.index_received, engine.index_secids().len());
         assert_eq!(snapshot.quality.broad_index_received, BROAD_INDICES.len());
     }
 
@@ -2064,7 +2072,7 @@ mod tests {
         );
         assert!(second.quality.index_cached);
         assert!(second.quality.conclusion_ready);
-        assert_eq!(second.quality.index_received, index_secids().len());
+        assert_eq!(second.quality.index_received, engine.index_secids().len());
     }
 
     #[test]
@@ -2118,7 +2126,7 @@ mod tests {
         );
         assert!(second.quality.index_cached);
         assert!(second.quality.conclusion_ready);
-        assert_eq!(second.quality.index_received, index_secids().len());
+        assert_eq!(second.quality.index_received, engine.index_secids().len());
     }
 
     #[test]
@@ -2202,7 +2210,7 @@ mod tests {
             float_market_cap: 1_000_000_000.0,
             limit_state: 0,
         }];
-        let style = build_style("middle", &rows, None, 1.0, "10:30:00");
+        let style = build_style("middle", "中登", "测试", &rows, None, 1.0, "10:30:00");
         let subtotal: f32 = style.subsectors.iter().map(|item| item.contribution).sum();
         assert!((style.preference - (50.0 + subtotal / 2.0)).abs() < 0.001);
     }
@@ -2225,7 +2233,7 @@ mod tests {
             float_market_cap: 1_000_000_000.0,
             limit_state: 0,
         }];
-        let style = build_style("young", &rows, None, 0.0, "10:30:00");
+        let style = build_style("young", "小登", "测试", &rows, None, 0.0, "10:30:00");
         assert_eq!(style.state, "strong");
         assert!(style.score >= STRONG_SCORE);
         assert!(style.preference < 50.0);
@@ -2270,7 +2278,7 @@ mod tests {
                 limit_state: 1,
             },
         ];
-        let style = build_style("old", &rows, None, 0.0, "10:30:00");
+        let style = build_style("old", "老登", "测试", &rows, None, 0.0, "10:30:00");
         assert!(style.weighting_divergence > 0.7);
         assert!(style
             .positive
@@ -2402,21 +2410,30 @@ mod tests {
 
     #[test]
     fn embedded_universe_has_balanced_offline_coverage() {
-        let members = embedded_universe().unwrap();
-        assert_eq!(members.len(), 450);
-        for style in ["young", "middle", "old"] {
+        let definition = MarketDefinition::embedded();
+        let members = embedded_universe(&definition).unwrap();
+        assert_eq!(members.len(), 480);
+        for (style, expected) in [("young", 150), ("middle", 180), ("old", 150)] {
             assert_eq!(
                 members
                     .iter()
                     .filter(|member| member.exposures[0].style == style)
                     .count(),
-                150
+                expected
             );
         }
         assert!(members
             .iter()
             .flat_map(|member| &member.exposures)
             .any(|exposure| exposure.subsector == "电子代理"));
+        assert!(members
+            .iter()
+            .flat_map(|member| &member.exposures)
+            .any(|exposure| exposure.subsector == "创新药"));
+        assert!(members
+            .iter()
+            .flat_map(|member| &member.exposures)
+            .any(|exposure| exposure.subsector == "医药医疗"));
     }
 
     #[test]
@@ -2432,11 +2449,13 @@ mod tests {
         let first = build_stratified_universe(
             vec![
                 (
-                    &BOARDS[0],
+                    "young".into(),
+                    MarketDefinition::embedded().style("young").unwrap().boards[0].clone(),
                     vec![member("sh600003"), member("sh600001"), member("sh600002")],
                 ),
                 (
-                    &BOARDS[1],
+                    "young".into(),
+                    MarketDefinition::embedded().style("young").unwrap().boards[1].clone(),
                     vec![member("sh600006"), member("sh600004"), member("sh600005")],
                 ),
             ],
@@ -2445,11 +2464,13 @@ mod tests {
         let second = build_stratified_universe(
             vec![
                 (
-                    &BOARDS[1],
+                    "young".into(),
+                    MarketDefinition::embedded().style("young").unwrap().boards[1].clone(),
                     vec![member("sh600005"), member("sh600006"), member("sh600004")],
                 ),
                 (
-                    &BOARDS[0],
+                    "young".into(),
+                    MarketDefinition::embedded().style("young").unwrap().boards[0].clone(),
                     vec![member("sh600002"), member("sh600001"), member("sh600003")],
                 ),
             ],
@@ -2460,10 +2481,62 @@ mod tests {
             serde_json::to_string(&second).unwrap()
         );
         assert_eq!(first.len(), 4);
-        assert!(BOARDS[..2].iter().all(|spec| first.iter().any(|item| item
-            .exposures
+        assert!(["AI芯片", "CPO"]
             .iter()
-            .any(|exposure| exposure.subsector == spec.subsector))));
+            .all(|subsector| first.iter().any(|item| item
+                .exposures
+                .iter()
+                .any(|exposure| exposure.subsector == *subsector))));
+    }
+
+    #[test]
+    fn stratified_universe_honors_hot_updated_sample_weights() {
+        let member = |code: &str| crate::quotes::BoardMember {
+            code: code.into(),
+            name: code.into(),
+            float_market_cap: 1.0,
+        };
+        let mut primary = MarketDefinition::embedded().style("young").unwrap().boards[0].clone();
+        primary.sample_weight = 2;
+        let secondary = MarketDefinition::embedded().style("young").unwrap().boards[1].clone();
+        let members = build_stratified_universe(
+            vec![
+                (
+                    "young".into(),
+                    primary.clone(),
+                    vec![
+                        member("sh600001"),
+                        member("sh600002"),
+                        member("sh600003"),
+                        member("sh600004"),
+                    ],
+                ),
+                (
+                    "young".into(),
+                    secondary.clone(),
+                    vec![
+                        member("sh600005"),
+                        member("sh600006"),
+                        member("sh600007"),
+                        member("sh600008"),
+                    ],
+                ),
+            ],
+            6,
+        );
+        let count = |subsector: &str| {
+            members
+                .iter()
+                .filter(|member| {
+                    member
+                        .exposures
+                        .iter()
+                        .any(|item| item.subsector == subsector)
+                })
+                .count()
+        };
+        assert_eq!(count(&primary.name), 4);
+        assert_eq!(count(&secondary.name), 2);
     }
 
     #[test]
@@ -2540,9 +2613,21 @@ mod tests {
         };
         let members = build_stratified_universe(
             vec![
-                (&BOARDS[0], vec![board_member.clone()]),
-                (&BOARDS[1], vec![board_member.clone()]),
-                (&BOARDS[5], vec![board_member]),
+                (
+                    "young".into(),
+                    MarketDefinition::embedded().style("young").unwrap().boards[0].clone(),
+                    vec![board_member.clone()],
+                ),
+                (
+                    "young".into(),
+                    MarketDefinition::embedded().style("young").unwrap().boards[1].clone(),
+                    vec![board_member.clone()],
+                ),
+                (
+                    "middle".into(),
+                    MarketDefinition::embedded().style("middle").unwrap().boards[0].clone(),
+                    vec![board_member],
+                ),
             ],
             10,
         );

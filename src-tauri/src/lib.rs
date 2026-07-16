@@ -8,6 +8,7 @@ use tokio::time::{sleep, timeout};
 mod config;
 mod futu;
 mod market;
+mod market_definition;
 mod models;
 mod portfolio;
 mod quotes;
@@ -223,7 +224,7 @@ fn clear_market_snapshots(app: AppHandle) -> Result<(), String> {
         guard.market_engine.reset_intraday();
         guard.market = MarketAnalysisState {
             universe_size: guard.market_engine.members.len(),
-            sample_version: market::SAMPLE_VERSION.into(),
+            sample_version: guard.market_engine.sample_version().into(),
             algorithm_version: market::ALGORITHM_VERSION.into(),
             ..Default::default()
         };
@@ -373,16 +374,18 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
         let mut guard = state.0.lock().map_err(|error| error.to_string())?;
         guard.market_engine = engine;
     }
-    let (codes, refresh_minutes, quote_config) = {
+    let (codes, index_codes, sample_version, refresh_minutes, quote_config) = {
         let guard = state.0.lock().map_err(|error| error.to_string())?;
         (
             guard.market_engine.codes(),
+            guard.market_engine.index_secids(),
+            guard.market_engine.sample_version().to_string(),
             guard.config.market_analysis.refresh_minutes,
             guard.config.clone(),
         )
     };
     let mut fetched = fetch_quotes_detailed_with_config(&codes, &quote_config).await?;
-    match fetch_index_quotes(&market::index_secids()).await {
+    match fetch_index_quotes(&index_codes).await {
         Ok(quotes) => fetched.index_quotes = quotes,
         Err(error) => fetched.index_error = error,
     }
@@ -395,7 +398,7 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
         let boundary_changed = previous.as_ref().is_some_and(|old| {
             old.trading_date != snapshot.trading_date
                 || old.quality.sample_source != snapshot.quality.sample_source
-        }) || guard.market.sample_version != market::SAMPLE_VERSION
+        }) || guard.market.sample_version != sample_version
             || guard.market.algorithm_version != market::ALGORITHM_VERSION;
         if boundary_changed {
             if previous.is_some() {
@@ -408,6 +411,8 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
                 time: snapshot.time.clone(),
                 phase: snapshot.phase.clone(),
                 sample_source: snapshot.quality.sample_source.clone(),
+                definition_source: snapshot.quality.definition_source.clone(),
+                definition_version: snapshot.quality.definition_version.clone(),
                 leader: snapshot.leader.clone(),
                 scores: snapshot.styles.iter().map(|style| style.score).collect(),
                 status: snapshot.status.clone(),
@@ -444,7 +449,7 @@ async fn refresh_market_analysis_once(app: &AppHandle) -> Result<MarketSnapshot,
             }
         }
         guard.market.universe_size = codes.len();
-        guard.market.sample_version = market::SAMPLE_VERSION.into();
+        guard.market.sample_version = sample_version;
         guard.market.algorithm_version = market::ALGORITHM_VERSION.into();
         guard.market.last_error = None;
         guard.market.current = Some(snapshot.clone());

@@ -289,6 +289,10 @@ pub(crate) struct MarketEvidence {
     pub(crate) phase: String,
     #[serde(default)]
     pub(crate) sample_source: String,
+    #[serde(default)]
+    pub(crate) definition_source: String,
+    #[serde(default)]
+    pub(crate) definition_version: String,
     pub(crate) leader: Option<String>,
     pub(crate) scores: Vec<f32>,
     #[serde(default)]
@@ -313,6 +317,10 @@ pub(crate) struct MarketDataQuality {
     pub(crate) mode: String,
     #[serde(default)]
     pub(crate) sample_source: String,
+    #[serde(default)]
+    pub(crate) definition_source: String,
+    #[serde(default)]
+    pub(crate) definition_version: String,
     #[serde(default)]
     pub(crate) style_coverage: Vec<f32>,
     #[serde(default)]

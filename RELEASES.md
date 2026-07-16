@@ -1,5 +1,13 @@
 # StockTray Releases
 
+## 0.2.20 - Signed market-style sample hot updates
+
+- Added signed remote market definitions for style labels, concept boards, sampling weights, coverage limits, refresh cadence, and complete fallback constituents.
+- Staged new definitions during the trading day and activated them only during the final call-auction window, with last-known-good caching and signed rollback support.
+- Added innovation-drug and broader healthcare coverage to the middle style, including refreshed online boards and offline fallback constituents.
+- Preserved definition versions in snapshots and intraday evidence, and surfaced the active definition version and source in the market analysis UI.
+- Added an independent GitHub Actions workflow that validates, signs, and publishes immutable market-data definitions without requiring another application release.
+
 ## 0.2.19 - Market style intelligence and local history
 
 - Rebuilt market-style analysis around independent young, middle, and old capital directions with exact samples, float-cap weighting, concentration controls, broad-index confirmation, and strict data-quality gates.

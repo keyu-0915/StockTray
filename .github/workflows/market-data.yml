@@ -1,0 +1,91 @@
+name: Publish market definition
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/market/stable.json"
+      - "docs/market/definitions/**"
+
+concurrency:
+  group: market-data
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate embedded and fallback samples
+        run: cargo test --manifest-path src-tauri/Cargo.toml market_definition::tests::stable_pointer_targets_a_valid_definition
+
+      - name: Resolve definition assets
+        id: definition
+        shell: pwsh
+        run: |
+          $pointer = Get-Content "docs/market/stable.json" -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($pointer.schema_version -ne 1) { throw "Unsupported market definition schema" }
+          $definition = Join-Path "docs/market/definitions" $pointer.definition_file
+          if (-not (Test-Path -LiteralPath $definition)) { throw "Definition file not found: $definition" }
+          if ($pointer.signature_file -ne "$($pointer.definition_file).sig") { throw "Signature filename must match the definition" }
+          "definition=$definition" >> $env:GITHUB_OUTPUT
+          "signature=$definition.sig" >> $env:GITHUB_OUTPUT
+
+      - name: Sign market definition
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri signer sign "${{ steps.definition.outputs.definition }}"
+
+      - name: Verify signature asset
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath "${{ steps.definition.outputs.signature }}")) {
+            throw "Tauri signer did not create the expected signature"
+          }
+
+      - name: Publish immutable definition before pointer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release view market-data *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create market-data --title "StockTray market data" --notes "Signed hot-update definitions for market style samples."
+          }
+          $definition = "${{ steps.definition.outputs.definition }}"
+          $signature = "${{ steps.definition.outputs.signature }}"
+          $definitionName = Split-Path $definition -Leaf
+          $signatureName = Split-Path $signature -Leaf
+          $assets = (gh release view market-data --json assets | ConvertFrom-Json).assets.name
+          if ($assets -contains $definitionName) {
+            if ($assets -notcontains $signatureName) { throw "Published definition is missing its signature" }
+            New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/market-data" | Out-Null
+            gh release download market-data --pattern $definitionName --dir "$env:RUNNER_TEMP/market-data" --clobber
+            $published = Join-Path "$env:RUNNER_TEMP/market-data" $definitionName
+            if ((Get-FileHash $published -Algorithm SHA256).Hash -ne (Get-FileHash $definition -Algorithm SHA256).Hash) {
+              throw "Refusing to overwrite immutable market definition $definitionName"
+            }
+          } else {
+            gh release upload market-data $definition $signature
+          }
+          gh release upload market-data "docs/market/stable.json" --clobber
